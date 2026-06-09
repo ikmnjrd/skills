@@ -1,0 +1,4 @@
+interface:
+  display_name: "Summarize Changes"
+  short_description: "Summarize code changes and their impact"
+  default_prompt: "Use $summarize-changes to explain the current code changes concisely."

@@ -1,0 +1,27 @@
+{
+  "grill-me": {
+    "upstream": "https://github.com/mattpocock/skills",
+    "author": "Matt Pocock",
+    "originalPath": "skills/productivity/grill-me",
+    "importedRef": "2bf70051928429983de3b5718d277150926f8c89",
+    "retrievedAt": "2026-06-08",
+    "license": "MIT",
+    "localPath": "skills/grill-me",
+    "localChanges": "formatting-only"
+  },
+  "grill-with-docs": {
+    "upstream": "https://github.com/mattpocock/skills",
+    "author": "Matt Pocock",
+    "originalPath": "skills/engineering/grill-with-docs",
+    "importedRef": "2bf70051928429983de3b5718d277150926f8c89",
+    "retrievedAt": "2026-06-08",
+    "license": "MIT",
+    "localPath": "skills/grill-with-docs",
+    "localChanges": "formatting-only",
+    "includedFiles": [
+      "SKILL.md",
+      "CONTEXT-FORMAT.md",
+      "ADR-FORMAT.md"
+    ]
+  }
+}
