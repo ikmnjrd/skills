@@ -6,7 +6,6 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 
 - `grill-me` — エージェントが焦点を絞った質問を一つずつ行い、計画や設計を厳しく検証します。
 - `grill-with-docs` — プロジェクト内の用語や意思決定と照らして計画を厳しく検証し、必要に応じて `CONTEXT.md` や ADR を更新します。
-- `summarize-changes` — コード変更、影響、検証結果、残存リスクを要約します。オリジナルスキルです。
 - `audit-command-permissions` — Codex と Claude Code のログを監査し、許可、確認、拒否に関する保守的なコマンドルールを提案します。オリジナルスキルです。
 - `apply-command-permissions` — 選択した Codex と Claude Code の権限ルールについて、ドライラン、検証、適用、バックアップ、ロールバックを行います。オリジナルスキルです。
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
@@ -24,10 +23,6 @@ skills/
     CONTEXT-FORMAT.md
     ADR-FORMAT.md
     VENDOR.md
-  summarize-changes/
-    SKILL.md
-    agents/
-      openai.yaml
   audit-command-permissions/
     SKILL.md
     scripts/
@@ -118,7 +113,7 @@ vendored スキルには、取得元とローカル変更を説明する `VENDOR
 4. vendored スキルに実行可能スクリプトを追加する前にレビューします。
 5. 下記の検証コマンドを実行します。
 
-オリジナルスキルには、ロックエントリや `VENDOR.md` を追加しません。`summarize-changes` ディレクトリが最小構成の例です。
+オリジナルスキルには、ロックエントリや `VENDOR.md` を追加しません。
 
 ### vendored スキルの更新
 
@@ -166,7 +161,6 @@ bash scripts/validate-skills.sh
 mkdir -p .github/skills
 cp -R skills/grill-me .github/skills/grill-me
 cp -R skills/grill-with-docs .github/skills/grill-with-docs
-cp -R skills/summarize-changes .github/skills/summarize-changes
 cp -R skills/empirical-prompt-tuning .github/skills/empirical-prompt-tuning
 cp -R skills/extract-glossary .github/skills/extract-glossary
 ```
