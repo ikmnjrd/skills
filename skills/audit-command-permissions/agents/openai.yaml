@@ -1,0 +1,4 @@
+interface:
+  display_name: "Audit Command Permissions"
+  short_description: "Classify agent commands into permission policy candidates"
+  default_prompt: "Use $audit-command-permissions to audit my Codex and Claude Code logs and propose command permission rules."

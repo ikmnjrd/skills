@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apply Command Permissions"
+  short_description: "Safely apply reviewed Codex and Claude permission rules"
+  default_prompt: "Use $apply-command-permissions to dry-run and apply the permission candidates I selected."

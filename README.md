@@ -7,6 +7,8 @@ Personal curated agent skills for GitHub Copilot / coding agents.
 - `grill-me` — stress-test a plan or design by having the agent ask focused questions one at a time.
 - `grill-with-docs` — stress-test a plan against project language and decisions, updating `CONTEXT.md` and ADRs when useful.
 - `summarize-changes` — summarize code changes, impact, validation, and remaining risk. This is an original skill.
+- `audit-command-permissions` — audit Codex and Claude Code logs and propose conservative allow, prompt, and deny command rules. This is an original skill.
+- `apply-command-permissions` — dry-run, validate, apply, back up, and roll back selected Codex and Claude Code permission rules. This is an original skill.
 
 ## Layout
 
@@ -24,6 +26,18 @@ skills/
     SKILL.md
     agents/
       openai.yaml
+  audit-command-permissions/
+    SKILL.md
+    scripts/
+      audit_command_permissions.py
+      permission_audit/
+      tests/
+  apply-command-permissions/
+    SKILL.md
+    scripts/
+      apply_command_permissions.py
+      permission_apply/
+      tests/
 LICENSES/
   mattpocock-skills-LICENSE
 vendor/

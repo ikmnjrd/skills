@@ -1,0 +1,5 @@
+{"type":"assistant","timestamp":"2026-06-02T00:00:00Z","cwd":"/workspace/sample-project","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-1","name":"Bash","input":{"command":"npm test"}}]}}
+{"type":"user","timestamp":"2026-06-02T00:00:01Z","cwd":"/workspace/sample-project","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-1","content":"ok"}]}}
+{"type":"assistant","timestamp":"2026-06-02T00:00:02Z","cwd":"/workspace/sample-project","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-2","name":"Bash","input":{"command":"rm -rf /"}}]}}
+{"type":"user","timestamp":"2026-06-02T00:00:03Z","cwd":"/workspace/sample-project","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tool-2","is_error":true,"content":"Permission denied by user"}]}}
+{"type":"assistant","timestamp":"2026-06-02T00:00:04Z","cwd":"/workspace/sample-project","message":{"role":"assistant","content":[{"type":"tool_use","id":"tool-3","name":"WebFetch","input":{"url":"https://example.test/private?api_key=secret"}}]}}

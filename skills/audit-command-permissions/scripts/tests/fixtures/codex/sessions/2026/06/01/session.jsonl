@@ -1,0 +1,9 @@
+{"timestamp":"2026-06-01T00:00:00Z","type":"session_meta","payload":{"type":"session_meta","cwd":"/workspace/sample-project"}}
+{"timestamp":"2026-06-01T00:00:01Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-1","arguments":"{\"cmd\":\"git status\",\"workdir\":\"/workspace/sample-project\"}"}}
+{"timestamp":"2026-06-01T00:00:02Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-1","output":"clean"}}
+{"timestamp":"2026-06-01T00:00:03Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-2","arguments":"{\"cmd\":\"rm -rf ./build\",\"workdir\":\"/workspace/sample-project\"}"}}
+{"timestamp":"2026-06-01T00:00:04Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-2","output":"done"}}
+{"timestamp":"2026-06-01T00:00:05Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"call-3","arguments":"{\"cmd\":\"curl -H 'Authorization: Bearer top-secret-value' 'https://example.test/api?token=secret'\",\"workdir\":\"/workspace/sample-project\"}"}}
+{"timestamp":"2026-06-01T00:00:06Z","type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","call_id":"call-4","input":"*** Begin Patch\n*** Update File: /workspace/sample-project/a.txt\n*** End Patch"}}
+{"timestamp":"2026-06-01T00:00:07Z","type":"response_item","payload":{"type":"web_search_call","call_id":"call-5","action":{"query":"safe query"}}}
+{"timestamp":"2026-06-01T00:00:08Z","type":"event_msg","payload":{"type":"web_search_end","call_id":"call-5"}}
