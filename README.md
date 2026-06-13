@@ -151,7 +151,28 @@ vendored スキルには、取得元とローカル変更を説明する `VENDOR
 bash scripts/validate-skills.sh
 ```
 
+複数のスキルだけを検証する場合は、対象を位置引数で指定します。スキル名、
+`skills/` から始まるディレクトリ、またはその配下のファイルパスを指定できます。
+同じスキルを複数回指定しても、一度だけ検証されます。
+
+```sh
+bash scripts/validate-skills.sh grill-me skills/grill-with-docs
+bash scripts/validate-skills.sh skills/grill-me/SKILL.md skills/grill-with-docs/SKILL.md
+```
+
 バリデーターは、スキルが少なくとも一つ存在すること、必要なファイルが揃っていること、`SKILL.md` に必須のフロントマターがあることを確認します。
+
+### Git hook
+
+コミット前に、ステージされている変更に含まれるスキルだけを検証する
+`pre-commit` hook を利用できます。次のコマンドで、このリポジトリに対して有効化します。
+
+```sh
+git config core.hooksPath .githooks
+```
+
+hook は Git index の内容を一時ディレクトリに展開するため、ステージされていない変更は
+検証に含まれません。スキルディレクトリ全体の削除は検証対象から除外されます。
 
 ## スキルの同期
 

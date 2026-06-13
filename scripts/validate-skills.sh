@@ -2,6 +2,8 @@
 set -euo pipefail
 
 found_skill=false
+declare -a skills_to_validate=()
+declare -A seen_skills=()
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to validate vendor lock files" >&2
@@ -16,7 +18,46 @@ for lock in vendor/*.lock.json; do
   fi
 done
 
-for skill in skills/*; do
+if [ "$#" -eq 0 ]; then
+  skills_to_validate=(skills/*)
+else
+  for target in "$@"; do
+    target="${target#./}"
+    target="${target%/}"
+
+    case "$target" in
+      skills/*)
+        skill_name="${target#skills/}"
+        skill_name="${skill_name%%/*}"
+        ;;
+      */*)
+        echo "Invalid skill target: $target" >&2
+        exit 1
+        ;;
+      *)
+        skill_name="$target"
+        ;;
+    esac
+
+    if [ -z "$skill_name" ]; then
+      echo "Invalid skill target: $target" >&2
+      exit 1
+    fi
+
+    skill="skills/$skill_name"
+    if [ ! -d "$skill" ]; then
+      echo "Skill not found: $skill" >&2
+      exit 1
+    fi
+
+    if [ -z "${seen_skills[$skill]+x}" ]; then
+      skills_to_validate+=("$skill")
+      seen_skills["$skill"]=1
+    fi
+  done
+fi
+
+for skill in "${skills_to_validate[@]}"; do
   [ -d "$skill" ] || continue
   found_skill=true
 
