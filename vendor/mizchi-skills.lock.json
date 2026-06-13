@@ -1,0 +1,29 @@
+{
+  "empirical-prompt-tuning": {
+    "upstream": "https://github.com/mizchi/skills",
+    "author": "mizchi (Kotaro Chikuba)",
+    "originalPath": "meta/empirical-prompt-tuning",
+    "importedRef": "89c1b34018ba0d85a770c065ba22f83a8d004d34",
+    "retrievedAt": "2026-06-13",
+    "license": "MIT (upstream README default)",
+    "localPath": "skills/empirical-prompt-tuning",
+    "localChanges": "none",
+    "includedFiles": [
+      "SKILL.md",
+      "SKILL-ja.md"
+    ]
+  },
+  "extract-glossary": {
+    "upstream": "https://github.com/mizchi/skills",
+    "author": "mizchi (Kotaro Chikuba)",
+    "originalPath": "meta/extract-glossary",
+    "importedRef": "89c1b34018ba0d85a770c065ba22f83a8d004d34",
+    "retrievedAt": "2026-06-13",
+    "license": "MIT (upstream README default)",
+    "localPath": "skills/extract-glossary",
+    "localChanges": "none",
+    "includedFiles": [
+      "SKILL.md"
+    ]
+  }
+}

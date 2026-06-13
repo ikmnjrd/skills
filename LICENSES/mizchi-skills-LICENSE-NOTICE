@@ -1,0 +1,10 @@
+Upstream license declaration
+
+Repository: https://github.com/mizchi/skills
+Imported ref: 89c1b34018ba0d85a770c065ba22f83a8d004d34
+Source: README.md, "License" section
+
+The upstream repository does not contain a root license file or a
+skill-specific license file for meta/empirical-prompt-tuning at this ref.
+Its README states that skills without an explicit license default to MIT at
+the repository owner's discretion.

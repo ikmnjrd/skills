@@ -9,6 +9,8 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `summarize-changes` — コード変更、影響、検証結果、残存リスクを要約します。オリジナルスキルです。
 - `audit-command-permissions` — Codex と Claude Code のログを監査し、許可、確認、拒否に関する保守的なコマンドルールを提案します。オリジナルスキルです。
 - `apply-command-permissions` — 選択した Codex と Claude Code の権限ルールについて、ドライラン、検証、適用、バックアップ、ロールバックを行います。オリジナルスキルです。
+- `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
+- `extract-glossary` — リポジトリ群から用語集、実装マップ、技術構成、オンボーディング向け Mermaid 図を生成します。
 
 ## ディレクトリ構成
 
@@ -38,10 +40,19 @@ skills/
       apply_command_permissions.py
       permission_apply/
       tests/
+  empirical-prompt-tuning/
+    SKILL.md
+    SKILL-ja.md
+    VENDOR.md
+  extract-glossary/
+    SKILL.md
+    VENDOR.md
 LICENSES/
   mattpocock-skills-LICENSE
+  mizchi-skills-LICENSE-NOTICE
 vendor/
   mattpocock-skills.lock.json
+  mizchi-skills.lock.json
 ```
 
 ## 帰属表示
@@ -60,6 +71,21 @@ MIT
 アップストリームのライセンス本文は `LICENSES/mattpocock-skills-LICENSE` に保持しています。
 
 ローカルでの変更内容は、各 vendored スキルの `VENDOR.md` に記録しています。
+
+`empirical-prompt-tuning` と `extract-glossary` は mizchi の
+`mizchi/skills` リポジトリから取り込んだものです。
+
+元のリポジトリ:
+https://github.com/mizchi/skills
+
+原作者:
+mizchi (Kotaro Chikuba)
+
+ライセンス:
+MIT（個別ライセンスがない skill に対するアップストリーム README の既定）
+
+アップストリームには専用ライセンスファイルがないため、そのライセンス宣言を
+`LICENSES/mizchi-skills-LICENSE-NOTICE` に記録しています。
 
 ## 方針
 
@@ -141,6 +167,8 @@ mkdir -p .github/skills
 cp -R skills/grill-me .github/skills/grill-me
 cp -R skills/grill-with-docs .github/skills/grill-with-docs
 cp -R skills/summarize-changes .github/skills/summarize-changes
+cp -R skills/empirical-prompt-tuning .github/skills/empirical-prompt-tuning
+cp -R skills/extract-glossary .github/skills/extract-glossary
 ```
 
 または、このリポジトリを中央管理元として保持し、任意の同期スクリプトを使用します。
