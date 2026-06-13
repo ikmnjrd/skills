@@ -251,6 +251,13 @@ if [ "$dry_run" = true ]; then
   printf 'Result: dry-run\n'
   printf 'Scope: %s\n' "$scope"
   print_items "Install" "${planned[@]}"
+  setup_planned=()
+  if contains_skill agmsg; then
+    for agent in "${agents[@]}"; do
+      setup_planned+=("$agent/agmsg")
+    done
+  fi
+  print_items "Setup" "${setup_planned[@]}"
   print_items "Uninstall" "${removed[@]}"
   exit 0
 fi
@@ -295,6 +302,41 @@ if [ "${#failed[@]}" -gt 0 ]; then
   printf 'Scope: %s\n' "$scope"
   print_items "Installed" "${installed[@]}"
   print_items "Failed" "${failed[@]}"
+  printf 'Uninstalled: none\n'
+  exit 1
+fi
+
+setup_failed=()
+if contains_skill agmsg; then
+  for agent in "${agents[@]}"; do
+    target_dir="$(target_dir_for "$agent")"
+    installer="$target_dir/agmsg/install.sh"
+    if [ ! -x "$installer" ] || ! "$installer" \
+      --repo-root "$REPO_ROOT" \
+      --skill-dir "$target_dir/agmsg" \
+      >"$tmp_dir/agmsg-setup-$agent.out" \
+      2>"$tmp_dir/agmsg-setup-$agent.err"; then
+      setup_failed+=("$agent/agmsg")
+    fi
+  done
+fi
+
+if [ "${#setup_failed[@]}" -gt 0 ]; then
+  stop_activity failure
+  printf 'Result: failed\n'
+  printf 'Scope: %s\n' "$scope"
+  print_items "Installed" "${installed[@]}"
+  print_items "Setup failed" "${setup_failed[@]}"
+  for item in "${setup_failed[@]}"; do
+    agent="${item%%/*}"
+    error_file="$tmp_dir/agmsg-setup-$agent.err"
+    if [ -s "$error_file" ]; then
+      printf 'Setup error (%s):\n' "$item"
+      sed 's/^/  /' "$error_file"
+    else
+      printf 'Setup error (%s): installer missing or not executable\n' "$item"
+    fi
+  done
   printf 'Uninstalled: none\n'
   exit 1
 fi

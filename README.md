@@ -10,6 +10,7 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `apply-command-permissions` — 選択した Codex と Claude Code の権限ルールについて、ドライラン、検証、適用、バックアップ、ロールバックを行います。オリジナルスキルです。
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
 - `extract-glossary` — リポジトリ群から用語集、実装マップ、技術構成、オンボーディング向け Mermaid 図を生成します。
+- `agmsg` — ローカル SQLite を使い、Codex と Claude Code のセッション間でメッセージを送受信します。
 
 ## ディレクトリ構成
 
@@ -41,6 +42,13 @@ skills/
     VENDOR.md
   extract-glossary/
     SKILL.md
+    VENDOR.md
+  agmsg/
+    SKILL.md
+    SKILL.codex.md
+    SKILL.claude-code.md
+    install.sh
+    scripts/
     VENDOR.md
 LICENSES/
   mattpocock-skills-LICENSE
@@ -81,6 +89,10 @@ MIT（個別ライセンスがない skill に対するアップストリーム 
 
 アップストリームには専用ライセンスファイルがないため、そのライセンス宣言を
 `LICENSES/mizchi-skills-LICENSE-NOTICE` に記録しています。
+
+`agmsg` は fujibee の `ikmnjrd/agmsg` リポジトリから取り込んだものです。
+MIT ライセンス本文は `LICENSES/agmsg-LICENSE` に保持し、このリポジトリ向けの
+状態保存先とセットアップ変更は `skills/agmsg/VENDOR.md` に記録しています。
 
 ## 方針
 
@@ -136,12 +148,18 @@ vendored スキルには、取得元とローカル変更を説明する `VENDOR
 
 ### スキルの削除
 
-1. `skills/` 配下から対象ディレクトリを削除します。
-2. **収録スキル** 一覧から削除します。
-3. `vendor/` 配下の関連するロックファイルからエントリを削除します。
-4. 残っているどのスキルにも適用されなくなった場合に限り、`NOTICE.md` から帰属表示を削除します。
-5. 残っているどのスキルも使用していない場合に限り、アップストリームのライセンスファイルを削除します。
-6. 下記の検証コマンドを実行します。
+削除内容を確認してからスクリプトを実行します。
+
+```sh
+scripts/remove-skill.sh --dry-run <skill-name>
+scripts/remove-skill.sh <skill-name>
+```
+
+スクリプトは対象ディレクトリ、**収録スキル** 一覧、関連する vendor lock
+エントリを削除し、残ったスキルを検証します。同じ upstream の vendored
+スキルがなくなったと表示された場合は、残っているどのスキルにも適用されない
+ことを確認してから `NOTICE.md` の帰属表示と `LICENSES/` のライセンスファイルを
+手動で削除します。
 
 ## コマンド
 

@@ -1,0 +1,43 @@
+{
+  "agmsg": {
+    "upstream": "https://github.com/ikmnjrd/agmsg",
+    "author": "fujibee",
+    "originalPath": ".",
+    "importedRef": "ae155a5ad7500625970ace02d66aadfd6fb0c760",
+    "retrievedAt": "2026-06-14",
+    "license": "MIT",
+    "localPath": "skills/agmsg",
+    "localChanges": "Converted to a conventional Codex and Claude Code skill with repository-local ignored runtime state, split environment instructions, and an idempotent installer.",
+    "includedFiles": [
+      "SKILL.md",
+      "SKILL.codex.md",
+      "SKILL.claude-code.md",
+      "install.sh",
+      "agents/openai.yaml",
+      "scripts/actas-claim.sh",
+      "scripts/check-inbox.sh",
+      "scripts/config.sh",
+      "scripts/delivery.sh",
+      "scripts/history.sh",
+      "scripts/hook.sh",
+      "scripts/identities.sh",
+      "scripts/inbox.sh",
+      "scripts/init-db.sh",
+      "scripts/join.sh",
+      "scripts/leave.sh",
+      "scripts/rename-team.sh",
+      "scripts/rename.sh",
+      "scripts/reset.sh",
+      "scripts/send.sh",
+      "scripts/session-end.sh",
+      "scripts/session-start.sh",
+      "scripts/spawn.sh",
+      "scripts/team.sh",
+      "scripts/watch.sh",
+      "scripts/whoami.sh",
+      "scripts/lib/actas-lock.sh",
+      "scripts/lib/runtime.sh",
+      "scripts/lib/storage.sh"
+    ]
+  }
+}

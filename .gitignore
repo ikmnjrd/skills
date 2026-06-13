@@ -1,2 +1,4 @@
 .test-artifacts/
 .test-tmp/
+.agmsg/
+skills/agmsg/runtime-path

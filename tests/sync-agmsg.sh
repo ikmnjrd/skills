@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/test-sync-agmsg.XXXXXX")"
+trap 'rm -rf -- "$tmp_dir"' EXIT
+
+make_fixture() {
+  local root="$1"
+  mkdir -p "$root/scripts" "$root/skills" "$root/bin"
+  cp "$REPO_ROOT/scripts/sync-skills.sh" "$root/scripts/"
+  cp -R "$REPO_ROOT/skills/agmsg" "$root/skills/agmsg"
+
+  cat > "$root/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$1" = "api" ]; then
+  printf '%040d\n' 1
+  exit 0
+fi
+
+if [ "$1" = "skill" ] && [ "$2" = "install" ]; then
+  skill_path="$4"
+  shift 4
+  agent=""
+  scope=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --agent) agent="$2"; shift 2 ;;
+      --scope) scope="$2"; shift 2 ;;
+      --pin) shift 2 ;;
+      --force) shift ;;
+      *) shift ;;
+    esac
+  done
+
+  [ "$scope" = "user" ]
+  case "$agent" in
+    codex) target="$HOME/.codex/skills" ;;
+    claude-code) target="$HOME/.claude/skills" ;;
+    *) exit 1 ;;
+  esac
+
+  mkdir -p "$target"
+  rm -rf "$target/agmsg"
+  cp -R "$FAKE_SOURCE_ROOT/$skill_path" "$target/agmsg"
+  exit 0
+fi
+
+exit 1
+EOF
+  chmod +x "$root/bin/gh"
+}
+
+success_root="$tmp_dir/success"
+make_fixture "$success_root"
+success_home="$success_root/home"
+mkdir -p "$success_home"
+success_output="$(
+  cd "$success_root"
+  HOME="$success_home" \
+  PATH="$success_root/bin:$PATH" \
+  FAKE_SOURCE_ROOT="$success_root" \
+  scripts/sync-skills.sh
+)"
+grep -q '^Result: synchronized$' <<<"$success_output"
+runtime_dir="$success_root/.agmsg"
+[ "$(cat "$success_home/.codex/skills/agmsg/runtime-path")" = "$runtime_dir" ]
+[ "$(cat "$success_home/.claude/skills/agmsg/runtime-path")" = "$runtime_dir" ]
+[ -f "$runtime_dir/db/messages.db" ]
+
+dry_run_output="$(
+  cd "$success_root"
+  HOME="$success_home" \
+  PATH="$success_root/bin:$PATH" \
+  FAKE_SOURCE_ROOT="$success_root" \
+  scripts/sync-skills.sh --dry-run
+)"
+grep -q '^Setup: codex/agmsg$' <<<"$dry_run_output"
+grep -q '^Setup: claude-code/agmsg$' <<<"$dry_run_output"
+
+failure_root="$tmp_dir/failure"
+make_fixture "$failure_root"
+failure_home="$failure_root/home"
+mkdir -p "$failure_home"
+chmod -x "$failure_root/skills/agmsg/install.sh"
+set +e
+failure_output="$(
+  cd "$failure_root"
+  HOME="$failure_home" \
+  PATH="$failure_root/bin:$PATH" \
+  FAKE_SOURCE_ROOT="$failure_root" \
+  scripts/sync-skills.sh
+)"
+failure_status="$?"
+set -e
+[ "$failure_status" -eq 1 ]
+grep -q '^Result: failed$' <<<"$failure_output"
+grep -q '^Setup failed: codex/agmsg$' <<<"$failure_output"
+grep -q '^Setup failed: claude-code/agmsg$' <<<"$failure_output"
+
+printf 'ok\n'
