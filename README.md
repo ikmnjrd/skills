@@ -143,83 +143,23 @@ vendored スキルには、取得元とローカル変更を説明する `VENDOR
 5. 残っているどのスキルも使用していない場合に限り、アップストリームのライセンスファイルを削除します。
 6. 下記の検証コマンドを実行します。
 
-### 検証
-
-検証には `jq` が必要です。追加、更新、削除のたびに次のコマンドを実行します。
+## コマンド
 
 ```sh
+## スキルを検証
 bash scripts/validate-skills.sh
-```
 
-複数のスキルだけを検証する場合は、対象を位置引数で指定します。スキル名、
-`skills/` から始まるディレクトリ、またはその配下のファイルパスを指定できます。
-同じスキルを複数回指定しても、一度だけ検証されます。
-
-```sh
-bash scripts/validate-skills.sh grill-me skills/grill-with-docs
-bash scripts/validate-skills.sh skills/grill-me/SKILL.md skills/grill-with-docs/SKILL.md
-```
-
-バリデーターは、スキルが少なくとも一つ存在すること、必要なファイルが揃っていること、`SKILL.md` に必須のフロントマターがあることを確認します。
-
-### Git hook
-
-コミット前に、ステージされている変更に含まれるスキルだけを検証する
-`pre-commit` hook を利用できます。次のコマンドで、このリポジトリに対して有効化します。
-
-```sh
-git config core.hooksPath .githooks
-```
-
-hook は Git index の内容を一時ディレクトリに展開するため、ステージされていない変更は
-検証に含まれません。スキルディレクトリ全体の削除は検証対象から除外されます。
-
-## スキルの同期
-
-`scripts/sync-skills.sh` は、ローカルの `skills/` を期待するスキル一覧、
-GitHub の `ikmnjrd/skills` をインストール元として、対象環境を同期します。
-全スキルを同じ default branch のコミットから `--force` で再インストールし、
-インストールがすべて成功した後で、正本に存在しないスキルを削除します。
-
-引数なしでは Codex と Claude Code の user scope を同期します。
-
-```sh
+## Codex と Claude Code へ同期
 scripts/sync-skills.sh
-```
 
-変更内容だけを確認する場合:
-
-```sh
+## 同期内容だけを確認
 scripts/sync-skills.sh --dry-run
+
+## 明示・入れ子スキル呼び出しを E2E テスト
+scripts/test-skill.sh
 ```
 
-対象 agent は `--agent` を繰り返して指定できます。現在対応している値は
-`codex` と `claude-code` です。
-
-```sh
-scripts/sync-skills.sh --agent codex
-scripts/sync-skills.sh --agent codex --agent claude-code
-```
-
-project scope は、コマンドを実行した Git リポジトリを同期対象にします。
-
-```sh
-/path/to/skills/scripts/sync-skills.sh --scope project
-```
-
-同期結果は、インストールまたは削除したスキルごとに一行ずつ標準出力へ
-表示されます。
-
-```text
-Installed: codex/grill-me
-Uninstalled: codex/old-skill
-```
-
-GitHub CLI の実行中は stderr にスピナーを表示します。TTY 以外では開始と終了の
-メッセージだけを表示するため、標準出力の結果はそのまま処理できます。
-
-インストールが一件でも失敗した場合は余剰スキルを削除せず、終了コード `1`
-を返します。
+引数や詳細な挙動は [`scripts/README.md`](scripts/README.md) を参照してください。
 
 ## 手動での導入方法
 
