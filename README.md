@@ -149,6 +149,10 @@ vendored スキルには、取得元とローカル変更を説明する `VENDOR
 ## スキルを検証
 bash scripts/validate-skills.sh
 
+## スキルを削除
+scripts/remove-skill.sh --dry-run <skill-name>
+scripts/remove-skill.sh <skill-name>
+
 ## Codex と Claude Code へ同期
 scripts/sync-skills.sh
 

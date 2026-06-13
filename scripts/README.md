@@ -1,6 +1,6 @@
 # Scripts
 
-このディレクトリには、スキルの検証、同期、E2E テスト用コマンドがあります。
+このディレクトリには、スキルの検証、削除、同期、E2E テスト用コマンドがあります。
 
 ## validate-skills.sh
 
@@ -36,6 +36,25 @@ git config core.hooksPath .githooks
 hook は Git index の内容を一時ディレクトリに展開します。ステージされていない
 変更は検証に含まれず、スキルディレクトリ全体の削除は検証対象外です。
 
+## remove-skill.sh
+
+スキルディレクトリ、README の **収録スキル** 一覧、関連する vendor lock
+エントリをまとめて削除し、残ったスキルを検証します。
+
+```sh
+scripts/remove-skill.sh grill-me
+```
+
+変更内容だけを確認:
+
+```sh
+scripts/remove-skill.sh --dry-run grill-me
+```
+
+同じ upstream の vendored スキルがなくなった場合は、`NOTICE.md` の帰属表示と
+`LICENSES/` のライセンスファイルをレビューするよう表示します。帰属情報は共有
+される場合があるため、このスクリプトでは自動削除しません。
+
 ## sync-skills.sh
 
 リポジトリの `skills/` を正本として、Codex と Claude Code のインストール済み
@@ -69,6 +88,11 @@ scripts/sync-skills.sh --agent codex --agent claude-code
 全スキルを同じ default branch のコミットから再インストールし、すべて成功した
 後で正本に存在しないスキルを削除します。一件でもインストールに失敗した場合は
 削除を行わず、終了コード `1` を返します。
+
+`agmsg` の同期後は、各インストール先の `install.sh` を実行して、この
+リポジトリ直下の Git 管理対象外 `.agmsg/` を初期化し、各 skill コピーへ
+`runtime-path` を記録します。このセットアップに失敗した場合も同期全体を失敗
+扱いにし、スキル削除は行いません。
 
 ## test-skill.sh
 
