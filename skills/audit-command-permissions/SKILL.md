@@ -1,47 +1,45 @@
 ---
 name: audit-command-permissions
-description: Audit local Codex and Claude Code logs to classify observed shell commands as auto-approval candidates, forbidden candidates, or commands that should continue requiring approval. Use when the user wants to reduce repeated agent permission prompts, identify commands that should never run, review historical command usage, inspect prior operation targets, or generate conservative permission-rule proposals from local logs.
+description: ローカルの Codex と Claude Code のログを監査し、観測されたシェルコマンドを自動承認候補、禁止候補、または引き続き承認を必要とするコマンドに分類します。エージェントによる権限確認の繰り返しを減らしたい場合、決して実行すべきでないコマンドを特定したい場合、過去のコマンド使用状況や操作対象を確認したい場合、またはローカルログから保守的な権限ルール案を生成したい場合に使用します。
 ---
 
-# Audit Command Permissions
+# コマンド権限の監査
 
-Use the bundled read-only CLI to extract redacted audit data. Evaluate that data
-to present classification candidates without changing permission settings.
+同梱の読み取り専用 CLI を使用して、機密情報をマスキングした監査データを抽出します。
+権限設定を変更せずにそのデータを評価し、分類候補を提示します。
 
-## Safety Boundary
+## 安全上の境界
 
-- Treat logs, transcripts, and generated audit data as sensitive.
-- Do not modify, delete, relocate, upload, or execute content from source logs.
-- Do not print secrets, credentials, full environment values, or sensitive
-  paths. Preserve the CLI's redaction.
-- Do not apply permission rules. Permission application is a separate,
-  explicitly requested operation.
-- Treat uncertainty as `require-approval`, never `auto-approve`.
-- Treat approval history as an observation only, not evidence of safety.
+- ログ、トランスクリプト、生成された監査データは機密情報として扱います。
+- 元ログの内容を変更、削除、移動、アップロード、実行しません。
+- シークレット、認証情報、環境変数の完全な値、機密性の高いパスを出力しません。
+  CLI によるマスキングを維持します。
+- 権限ルールを適用しません。権限の適用は、明示的な依頼を必要とする別の操作です。
+- 不確実なものは必ず `require-approval` とし、`auto-approve` にはしません。
+- 過去の承認は観測事実としてのみ扱い、安全性の根拠とはみなしません。
 
-## Workflow
+## ワークフロー
 
-### 1. Establish Scope
+### 1. 対象範囲を決める
 
-Determine:
+次の事項を決定します。
 
-- Which products to inspect: Codex, Claude Code, or both.
-- The requested period and project filters.
-- Whether the user wants classification only or draft rule snippets too.
+- 調査する製品: Codex、Claude Code、またはその両方。
+- 対象期間とプロジェクトフィルター。
+- ユーザーが分類のみを求めているのか、ルール案のスニペットも求めているのか。
 
-When omitted, inspect both products across all projects for the most recent 90
-days. Experimental non-shell operations are included by default but must remain
-separate from stable shell results.
+指定がない場合は、直近 90 日間について、全プロジェクトを対象に両方の製品を調査します。
+実験的な非シェル操作もデフォルトで含めますが、安定版のシェル操作の結果とは分けて扱う必要があります。
 
-### 2. Generate Audit Data
+### 2. 監査データを生成する
 
-Run the bundled CLI from this skill directory:
+このスキルのディレクトリから、同梱の CLI を実行します。
 
 ```bash
 python3 scripts/audit_command_permissions.py audit --format json
 ```
 
-Useful options:
+便利なオプション:
 
 ```bash
 python3 scripts/audit_command_permissions.py audit --since 2026-01-01
@@ -51,66 +49,56 @@ python3 scripts/audit_command_permissions.py audit --shell-only
 python3 scripts/audit_command_permissions.py audit --format markdown
 ```
 
-Use `--output PATH` or `--output-dir DIR` only when persistence is useful.
-Created files use mode `0600`. JSON is the canonical audit data; Markdown is a
-human-readable projection.
+保存する必要がある場合に限り、`--output PATH` または `--output-dir DIR` を使用します。
+作成されるファイルのモードは `0600` です。JSON が正規の監査データであり、Markdown は人が読みやすい形式への投影です。
 
-Do not replace the CLI with `cat`, raw JSONL output, or ad hoc broad searches.
-If a product schema is unsupported, report the limitation and update that
-product adapter rather than exposing raw logs.
+CLI の代わりに `cat`、未加工の JSONL 出力、場当たり的な広範囲検索を使用しません。
+製品のスキーマが未対応の場合は、未加工のログを公開するのではなく、制約を報告してその製品のアダプターを更新します。
 
-### 3. Interpret Facts
+### 3. 事実を解釈する
 
-The CLI records facts and mechanical features, not safety classifications:
+CLI が記録するのは事実と機械的に抽出した特徴であり、安全性の分類ではありません。
 
-- Redacted operation, target, project, timestamp, and anonymous source reference.
-- Stable shell or experimental non-shell support level.
-- Observed outcomes such as `denied`,
-  `executed-without-observed-decision`, and `requested-only`.
-- Features such as `network_write`, `filesystem_write`, `recursive_delete`,
-  `privilege_boundary`, `outside_project_path`, and `dynamic_expansion`.
-- Parsing and extraction limitations.
+- マスキング済みの操作、対象、プロジェクト、タイムスタンプ、匿名化されたソース参照。
+- 安定版シェルまたは実験的な非シェルというサポートレベル。
+- `denied`、`executed-without-observed-decision`、`requested-only` などの観測結果。
+- `network_write`、`filesystem_write`、`recursive_delete`、`privilege_boundary`、`outside_project_path`、`dynamic_expansion` などの特徴。
+- 解析と抽出の制約。
 
-Never reinterpret `executed-without-observed-decision` as approval. If
-`approved` is explicitly observed, treat it only as past user behavior. It does
-not establish safety.
+`executed-without-observed-decision` を承認済みと解釈してはいけません。
+`approved` が明示的に観測された場合も、過去のユーザー行動としてのみ扱います。
+安全性が確立されたことにはなりません。
 
-### 4. Classify
+### 4. 分類する
 
-Read [classification-policy.md](references/classification-policy.md). Produce
-exactly:
+[classification-policy.md](references/classification-policy.md) を読み、次の分類を正確に出力します。
 
-- `auto-approve`: Narrow, repeatable, low-impact shell commands suitable for
-  skipping future prompts.
-- `forbid`: Shell commands or shapes that should be blocked without prompting.
-- `require-approval`: Commands requiring human review, including all uncertain
-  or context-dependent cases.
+- `auto-approve`: 範囲が狭く、反復可能で、影響が小さく、今後の確認を省略するのに適したシェルコマンド。
+- `forbid`: 確認なしでブロックすべきシェルコマンドまたはコマンド形式。
+- `require-approval`: 人による確認が必要なコマンド。不確実なものや状況に依存するものをすべて含みます。
 
-Keep experimental non-shell operations in a separate section. They may receive
-reference classifications, but do not translate them into Codex or Claude Code
-permission rules.
+実験的な非シェル操作は別のセクションに分けます。
+参考分類を付けることはできますが、Codex や Claude Code の権限ルールには変換しません。
 
-Past approval indicates prior tolerance in that context, not safety. A
-frequently approved operation may remain `require-approval` or become `forbid`.
+過去の承認が示すのは、その状況で以前許容されたという事実であり、安全性ではありません。
+頻繁に承認された操作でも、`require-approval` のままにする場合や `forbid` にする場合があります。
 
-### 5. Validate Candidate Breadth
+### 5. 候補の適用範囲を検証する
 
-For every proposed shell pattern:
+提案する各シェルパターンについて、次を行います。
 
-- Show observed examples that must match.
-- Show at least two near-neighbor examples that must not match.
-- Check compound commands, trailing arguments, paths, URLs, flags, and wrappers.
-- Reject prefixes granting a general shell, interpreter, package runner, remote
-  client, or privilege boundary.
-- Prefer several narrow rules over one broad rule.
-- Compare against existing rules for conflicts and redundant breadth.
+- 一致すべき観測例を示します。
+- 一致してはならない類似例を少なくとも二つ示します。
+- 複合コマンド、末尾の引数、パス、URL、フラグ、ラッパーを確認します。
+- 汎用シェル、インタープリター、パッケージランナー、リモートクライアント、または権限境界を許可するプレフィックスは却下します。
+- 一つの広いルールより、複数の狭いルールを優先します。
+- 既存ルールと比較し、競合や不必要に広い重複がないか確認します。
 
-Downgrade to `require-approval` when the product rule language cannot reliably
-express the intended boundary.
+製品のルール言語で意図した境界を確実に表現できない場合は、`require-approval` に引き下げます。
 
-### 6. Re-Inspect Evidence
+### 6. 証拠を再調査する
 
-When the user asks about concrete historical occurrences, re-scan source logs:
+ユーザーが過去の具体的な事例について質問した場合は、元ログを再走査します。
 
 ```bash
 python3 scripts/audit_command_permissions.py inspect --command rm
@@ -119,49 +107,43 @@ python3 scripts/audit_command_permissions.py inspect --feature outside_project_p
 python3 scripts/audit_command_permissions.py inspect --target build
 ```
 
-The CLI reveals project-relative targets where possible while retaining
-redaction for personal roots and secret paths. If logs were removed or moved,
-state that the event can no longer be reconstructed.
+CLI は、個人用ルートや機密パスをマスキングしたまま、可能な場合はプロジェクト相対の対象を表示します。
+ログが削除または移動されている場合は、その事象を再構成できないことを明記します。
 
-### 7. Report
+### 7. 報告する
 
-Start with:
+冒頭に次を記載します。
 
-- Sources and date range inspected.
-- Event and normalized-shape counts.
-- Stable shell candidate counts by class.
-- Experimental operation counts in a separate section.
-- Missing evidence or schema limitations.
+- 調査したソースと期間。
+- イベント数と正規化されたコマンド形式の数。
+- 分類ごとの安定版シェル候補数。
+- 別セクションに分けた実験的操作の数。
+- 不足している証拠またはスキーマ上の制約。
 
-For each shell class provide:
+シェルの各分類について、次の表を提示します。
 
-| Candidate ID | Candidate pattern | Observed | Outcome evidence | Risk/impact | Confidence | Reason |
+| 候補 ID | 候補パターン | 観測数 | 結果の根拠 | リスク・影響 | 確信度 | 理由 |
 |---|---|---:|---|---|---|---|
 
-Assign stable report-local IDs:
+レポート内で一貫した ID を割り当てます。
 
 - `ACP-ALLOW-NNN`
 - `ACP-FORBID-NNN`
 - `ACP-PROMPT-NNN`
 
-Use these IDs when the user later invokes `apply-command-permissions`. IDs
-identify report entries only and must not be written into product settings.
+ユーザーが後で `apply-command-permissions` を呼び出す際は、これらの ID を使用します。
+ID はレポート項目を識別するためだけのものであり、製品設定には書き込みません。
 
-For `forbid`, include a safer alternative where one exists. For
-`require-approval`, state the specific fact the user must verify.
+`forbid` には、より安全な代替手段がある場合はそれを含めます。
+`require-approval` には、ユーザーが確認すべき具体的な事実を記載します。
 
-Add `Rejected auto-approval ideas` for frequent operations that remain too broad
-or context-dependent.
+頻出するものの、適用範囲が広すぎるか状況依存である操作については、`却下した自動承認案` を追加します。
 
-When requested, read [rule-formats.md](references/rule-formats.md), verify syntax
-against the installed product or current official documentation, and label
-snippets `DRAFT - NOT APPLIED`.
+依頼された場合は、[rule-formats.md](references/rule-formats.md) を読み、インストール済みの製品または最新の公式ドキュメントに照らして構文を検証し、スニペットに `DRAFT - NOT APPLIED` と表示します。
 
-## Quality Bar
+## 品質基準
 
-- Cite observed, redacted examples for every candidate.
-- Do not infer safety from approval, successful execution, frequency, or an
-  executable name.
-- Do not auto-approve unconstrained shell text, code, destination paths, remote
-  targets, or package lifecycle scripts.
-- Keep raw excerpts minimal and preserve redaction.
+- すべての候補について、観測されたマスキング済みの例を引用します。
+- 承認、実行成功、頻度、実行ファイル名から安全性を推測しません。
+- 制約のないシェルテキスト、コード、出力先パス、リモート対象、パッケージのライフサイクルスクリプトを自動承認しません。
+- 未加工の抜粋は最小限にし、マスキングを維持します。

@@ -1,62 +1,58 @@
 ---
 name: apply-command-permissions
-description: Safely apply user-selected permission rules to Codex and Claude Code after reviewing audit candidates. Use when the user asks to apply, add, remove, replace, migrate, dry-run, validate, or roll back Codex execpolicy rules or Claude Code allow/ask/deny permissions. Requires explicit candidate selection, dry-run review, confirmation IDs, conflict resolution, backups, validation, and product-by-product application.
+description: 監査候補を確認した後、ユーザーが選択した権限ルールを Codex と Claude Code に安全に適用します。Codex の execpolicy ルール、または Claude Code の allow/ask/deny 権限について、適用、追加、削除、置換、移行、ドライラン、検証、ロールバックを依頼された場合に使用します。候補の明示的な選択、ドライランのレビュー、確認 ID、競合の解決、バックアップ、検証、製品ごとの適用が必要です。
 ---
 
-# Apply Command Permissions
+# コマンド権限の適用
 
-Convert the user's selected candidates into an application plan, dry-run each
-product, obtain explicit confirmation, and invoke the bundled CLI. Never apply
-rules directly with ad hoc file edits.
+ユーザーが選択した候補を適用計画に変換し、製品ごとにドライランを行い、明示的な確認を得てから、同梱の CLI を呼び出します。
+場当たり的なファイル編集でルールを直接適用してはいけません。
 
-## Boundaries
+## 境界条件
 
-- Apply one product per write operation.
-- Do not infer selection from an earlier audit report. Require candidate IDs or
-  an equally explicit list.
-- Do not apply experimental Codex non-shell permissions.
-- Permit unobserved `ask/prompt` and `deny/forbidden` rules when they are
-  explicit user policy. Reject unobserved `allow`.
-- Stop on unresolved conflicts, invalid settings, stale dry-runs, failed tests,
-  or missing Codex official validation.
-- Never use a force flag to bypass confirmation, conflicts, or rollback guards.
+- 一回の書き込み操作につき、一つの製品だけを適用対象にします。
+- 以前の監査レポートから選択内容を推測しません。候補 ID、または同等に明示的な一覧を必須とします。
+- 実験的な Codex の非シェル権限は適用しません。
+- 観測されていない `ask/prompt` と `deny/forbidden` のルールは、ユーザーが明示した方針である場合に許可します。観測されていない `allow` は却下します。
+- 未解決の競合、無効な設定、期限切れのドライラン、テスト失敗、Codex の公式検証不足がある場合は停止します。
+- 確認、競合、ロールバックの保護機構を回避するために強制フラグを使用してはいけません。
 
-## Workflow
+## ワークフロー
 
-### 1. Resolve the Selection
+### 1. 選択内容を確定する
 
-Identify selected candidate IDs such as `ACP-ALLOW-001`. For every rule resolve:
+`ACP-ALLOW-001` など、選択された候補 ID を特定します。
+各ルールについて、次の事項を確定します。
 
-- Product: `codex` or `claude`.
-- Action: `add`, `remove`, or `replace`.
-- Decision and exact pattern.
-- Claude scope: `user`, `project`, or `project-local`.
-- Source: `audit-candidate` or `user-policy`.
-- Reason and observed status.
-- Match and not-match cases.
+- 製品: `codex` または `claude`。
+- 操作: `add`、`remove`、または `replace`。
+- 判定と正確なパターン。
+- Claude のスコープ: `user`、`project`、または `project-local`。
+- 出所: `audit-candidate` または `user-policy`。
+- 理由と観測状況。
+- 一致するケースと一致しないケース。
 
-Codex is user-scoped. Warn that every Codex rule affects all projects. Do not
-apply a project-specific Codex allow unless the user explicitly accepts the
-global effect.
+Codex のスコープはユーザー単位です。
+すべての Codex ルールが全プロジェクトに影響することを警告します。
+ユーザーがグローバルな影響を明示的に受け入れない限り、プロジェクト固有の Codex の allow ルールを適用しません。
 
-### 2. Create the Plan
+### 2. 計画を作成する
 
-Read [plan-schema.md](references/plan-schema.md). Create the plan under `/tmp`
-with mode `0600`; do not include chat transcripts or secrets.
+[plan-schema.md](references/plan-schema.md) を読みます。
+計画は `/tmp` 配下にモード `0600` で作成し、チャットのトランスクリプトやシークレットを含めません。
 
-For ambiguous overlap:
+重複関係が曖昧な場合:
 
-1. Inspect the installed product rules and current official semantics.
-2. Generate temporary tests under `/tmp`.
-3. Prefer the official product evaluator.
-4. Classify the relation as `equivalent`, directional `subset`, `overlap`,
-   `disjoint`, or `unresolved`.
-5. Record cases, evaluator, test-code hash, and result hash in the plan.
-6. Stop if unresolved.
+1. インストール済み製品のルールと、現在の公式な意味仕様を調査します。
+2. `/tmp` 配下に一時テストを生成します。
+3. 製品公式の評価器を優先します。
+4. 関係を `equivalent`、方向付きの `subset`、`overlap`、`disjoint`、または `unresolved` に分類します。
+5. ケース、評価器、テストコードのハッシュ、結果のハッシュを計画に記録します。
+6. 未解決の場合は停止します。
 
-### 3. Dry-Run
+### 3. ドライランを行う
 
-Run:
+次を実行します。
 
 ```bash
 python3 scripts/apply_command_permissions.py dry-run \
@@ -64,34 +60,34 @@ python3 scripts/apply_command_permissions.py dry-run \
   --product codex
 ```
 
-Dry-run reports:
+ドライランでは、次を報告します。
 
-- Target product, scope, and files.
-- Current and proposed hashes.
-- Adds, removals, replacements, and no-ops.
-- Conflicts and relation evidence.
-- Match and not-match results.
-- Unified diff and retained unrelated settings.
-- Backup name and `confirmation_id`.
+- 対象製品、スコープ、ファイル。
+- 現在のハッシュと提案後のハッシュ。
+- 追加、削除、置換、変更なしの操作。
+- 競合と関係性の根拠。
+- 一致ケースと不一致ケースの結果。
+- unified diff と、保持される無関係な設定。
+- バックアップ名と `confirmation_id`。
 
-Resolve all reported blockers before continuing.
+報告された阻害要因をすべて解決してから続行します。
 
-### 4. Confirm
+### 4. 確認を得る
 
-Show the user the exact dry-run. Require a clear affirmative response.
+ドライランの正確な内容をユーザーに提示し、明確な肯定回答を必須とします。
 
-For dangerous relaxation, separately restate the removed protection and its
-effect. Put the exact restatement and its SHA-256 hash into
-`strong_confirmation`. A generic "apply it" is insufficient for:
+危険を伴う制限緩和の場合は、削除される保護とその影響を別途明示します。
+その正確な記述と SHA-256 ハッシュを `strong_confirmation` に格納します。
+次の操作では、単なる「適用して」という指示だけでは不十分です。
 
-- Removing or weakening deny/forbidden.
-- Changing ask/prompt to allow.
-- Broadening a rule.
-- Bulk removal.
+- deny/forbidden の削除または弱体化。
+- ask/prompt から allow への変更。
+- ルールの適用範囲の拡大。
+- 一括削除。
 
-### 5. Apply
+### 5. 適用する
 
-After confirmation, run the same plan with the dry-run confirmation ID:
+確認後、同じ計画とドライランの確認 ID を使用して実行します。
 
 ```bash
 python3 scripts/apply_command_permissions.py apply \
@@ -100,33 +96,30 @@ python3 scripts/apply_command_permissions.py apply \
   --confirmation-id CONFIRMATION_ID
 ```
 
-The CLI rechecks current hashes, tests, confirmation evidence, and merged
-content. It backs up, writes atomically, verifies, and rolls back automatically
-on failure.
+CLI は、現在のハッシュ、テスト、確認の証拠、マージ後の内容を再確認します。
+バックアップを作成し、アトミックに書き込み、検証を行い、失敗時には自動的にロールバックします。
 
-Apply the other product only through a separate dry-run and apply cycle.
+もう一方の製品への適用は、別のドライランと適用のサイクルでのみ行います。
 
-### 6. Finish
+### 6. 完了処理
 
-On success:
+成功した場合:
 
-- Report files changed, backup ID, and validation result.
-- Remove the temporary plan.
-- Note that durable records live under
-  `~/workspace/apply-command-permissions-log/{codex|claude}/`.
+- 変更したファイル、バックアップ ID、検証結果を報告します。
+- 一時的な計画を削除します。
+- 永続的な記録が `~/workspace/apply-command-permissions-log/{codex|claude}/` 配下に保存されることを明記します。
 
-On failure, leave the plan in place and report its path.
+失敗した場合は計画を残し、そのパスを報告します。
 
-### Rollback
+### ロールバック
 
-List recent operations:
+最近の操作を一覧表示します。
 
 ```bash
 python3 scripts/apply_command_permissions.py status --product codex
 ```
 
-Rollback only when the current file hash matches the selected operation's
-post-apply hash:
+現在のファイルハッシュが、選択した操作の適用後ハッシュと一致する場合に限りロールバックします。
 
 ```bash
 python3 scripts/apply_command_permissions.py rollback \
@@ -134,5 +127,5 @@ python3 scripts/apply_command_permissions.py rollback \
   --operation-id OPERATION_ID
 ```
 
-If later changes exist, create a new inverse plan instead. Never force an old
-backup over newer changes.
+その後の変更が存在する場合は、代わりに新しい逆操作の計画を作成します。
+新しい変更を古いバックアップで強制的に上書きしてはいけません。
