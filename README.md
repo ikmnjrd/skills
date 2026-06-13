@@ -153,7 +153,54 @@ bash scripts/validate-skills.sh
 
 バリデーターは、スキルが少なくとも一つ存在すること、必要なファイルが揃っていること、`SKILL.md` に必須のフロントマターがあることを確認します。
 
-## プロジェクトへの推奨導入方法
+## スキルの同期
+
+`scripts/sync-skills.sh` は、ローカルの `skills/` を期待するスキル一覧、
+GitHub の `ikmnjrd/skills` をインストール元として、対象環境を同期します。
+全スキルを同じ default branch のコミットから `--force` で再インストールし、
+インストールがすべて成功した後で、正本に存在しないスキルを削除します。
+
+引数なしでは Codex と Claude Code の user scope を同期します。
+
+```sh
+scripts/sync-skills.sh
+```
+
+変更内容だけを確認する場合:
+
+```sh
+scripts/sync-skills.sh --dry-run
+```
+
+対象 agent は `--agent` を繰り返して指定できます。現在対応している値は
+`codex` と `claude-code` です。
+
+```sh
+scripts/sync-skills.sh --agent codex
+scripts/sync-skills.sh --agent codex --agent claude-code
+```
+
+project scope は、コマンドを実行した Git リポジトリを同期対象にします。
+
+```sh
+/path/to/skills/scripts/sync-skills.sh --scope project
+```
+
+同期結果は、インストールまたは削除したスキルごとに一行ずつ標準出力へ
+表示されます。
+
+```text
+Installed: codex/grill-me
+Uninstalled: codex/old-skill
+```
+
+GitHub CLI の実行中は stderr にスピナーを表示します。TTY 以外では開始と終了の
+メッセージだけを表示するため、標準出力の結果はそのまま処理できます。
+
+インストールが一件でも失敗した場合は余剰スキルを削除せず、終了コード `1`
+を返します。
+
+## 手動での導入方法
 
 必要なスキルディレクトリを、対象リポジトリの `.github/skills/` ディレクトリにコピーします。
 
@@ -165,4 +212,4 @@ cp -R skills/empirical-prompt-tuning .github/skills/empirical-prompt-tuning
 cp -R skills/extract-glossary .github/skills/extract-glossary
 ```
 
-または、このリポジトリを中央管理元として保持し、任意の同期スクリプトを使用します。
+または、上記の同期スクリプトを使用します。
