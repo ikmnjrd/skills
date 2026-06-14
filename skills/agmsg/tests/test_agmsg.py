@@ -216,6 +216,29 @@ class TestDelivery(Base):
         stop = json.loads(f.read_text())["hooks"]["Stop"]
         self.assertEqual(len(stop), 2)  # foreign + agmsg
 
+    def test_apply_replaces_legacy_shell_hook(self):
+        f = delivery.hooks_file("codex", self.project)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"hooks": {"Stop": [
+            {"matcher": "", "hooks": [{"type": "command", "command":
+                "/home/test/.codex/skills/agmsg/scripts/check-inbox.sh "
+                "codex /tmp/project"}]},
+            {"matcher": "", "hooks": [{"type": "command", "command":
+                "/usr/local/bin/foreign-hook"}]},
+        ]}}))
+
+        delivery.apply("turn", "codex", self.project)
+
+        commands = [
+            hook["command"]
+            for entry in json.loads(f.read_text())["hooks"]["Stop"]
+            for hook in entry["hooks"]
+        ]
+        self.assertEqual(len(commands), 2)
+        self.assertIn("/usr/local/bin/foreign-hook", commands)
+        self.assertTrue(any("agmsg.py check-inbox" in cmd for cmd in commands))
+        self.assertFalse(any("/agmsg/scripts/" in cmd for cmd in commands))
+
     def test_check_inbox_marks_read(self):
         identity.join("alpha", "bob", "claude-code", self.project)
         storage.send("alpha", "alice", "bob", "ping")

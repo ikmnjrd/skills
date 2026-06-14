@@ -1,6 +1,7 @@
 .test-artifacts/
 .test-tmp/
 .agmsg/
+.agmsg.bak.*/
 skills/agmsg/runtime-path
 skills/agmsg/python-path
 __pycache__/

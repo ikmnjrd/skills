@@ -312,6 +312,10 @@ if contains_skill agmsg; then
   for agent in "${agents[@]}"; do
     target_dir="$(target_dir_for "$agent")"
     installed_skill="$target_dir/agmsg"
+    # gh skill install --force may overlay files without removing paths that
+    # disappeared upstream. Remove the retired shell implementation before
+    # binding the installed Python skill to the shared runtime.
+    rm -rf -- "$installed_skill/install.sh" "$installed_skill/scripts"
     if [ ! -f "$installer" ] || [ ! -f "$installed_skill/SKILL.md" ] || ! python3 "$installer" install \
       --repo-root "$REPO_ROOT" \
       --skill-dir "$installed_skill" \

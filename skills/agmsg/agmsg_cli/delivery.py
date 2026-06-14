@@ -27,7 +27,7 @@ from .envelope import AgmsgError
 from .jsonio import atomic_write_json
 
 EVENTS = ("SessionStart", "SessionEnd", "Stop")
-_OWNED_MARKER = "agmsg.py"
+_OWNED_MARKERS = ("agmsg.py", "/agmsg/scripts/")
 
 VALID_MODES = {
     "claude-code": ("monitor", "turn", "both", "off"),
@@ -64,7 +64,8 @@ def _entry(cmd: str) -> dict:
 
 def _is_owned(entry: dict) -> bool:
     for hook in entry.get("hooks", []) if isinstance(entry, dict) else []:
-        if _OWNED_MARKER in str(hook.get("command", "")):
+        command = str(hook.get("command", ""))
+        if any(marker in command for marker in _OWNED_MARKERS):
             return True
     return False
 

@@ -43,8 +43,8 @@ if [ "$1" = "skill" ] && [ "$2" = "install" ]; then
   esac
 
   mkdir -p "$target"
-  rm -rf "$target/agmsg"
-  cp -R "$FAKE_SOURCE_ROOT/$skill_path" "$target/agmsg"
+  mkdir -p "$target/agmsg"
+  cp -R "$FAKE_SOURCE_ROOT/$skill_path/." "$target/agmsg/"
   exit 0
 fi
 
@@ -56,7 +56,14 @@ EOF
 success_root="$tmp_dir/success"
 make_fixture "$success_root"
 success_home="$success_root/home"
-mkdir -p "$success_home"
+mkdir -p \
+  "$success_home/.codex/skills/agmsg/scripts" \
+  "$success_home/.claude/skills/agmsg/scripts"
+touch \
+  "$success_home/.codex/skills/agmsg/install.sh" \
+  "$success_home/.codex/skills/agmsg/scripts/legacy.sh" \
+  "$success_home/.claude/skills/agmsg/install.sh" \
+  "$success_home/.claude/skills/agmsg/scripts/legacy.sh"
 success_output="$(
   cd "$success_root"
   HOME="$success_home" \
@@ -69,6 +76,10 @@ runtime_dir="$success_root/.agmsg"
 [ "$(cat "$success_home/.codex/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ "$(cat "$success_home/.claude/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ -f "$runtime_dir/db/messages.db" ]
+[ ! -e "$success_home/.codex/skills/agmsg/install.sh" ]
+[ ! -e "$success_home/.codex/skills/agmsg/scripts" ]
+[ ! -e "$success_home/.claude/skills/agmsg/install.sh" ]
+[ ! -e "$success_home/.claude/skills/agmsg/scripts" ]
 # the Python CLI is runnable after sync (no executable bit required)
 python3 "$success_home/.codex/skills/agmsg/agmsg.py" whoami "$success_root" codex \
   | grep -q 'not_joined=true'
