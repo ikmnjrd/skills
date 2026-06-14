@@ -25,17 +25,17 @@ Claude Code は `monitor`、`turn`、`both`、`off` に対応します。
 回答を待ちます。空入力の場合は `monitor` とします。次のコマンドで適用します。
 
 ```bash
-"$SKILL_DIR/scripts/delivery.sh" set <mode> claude-code "$(pwd)"
+python3 "$SKILL_DIR/agmsg.py" delivery set <mode> claude-code "$(pwd)"
 ```
 
-`delivery.sh` が出力するすべての `AGMSG-DIRECTIVE` に従います。
+`delivery` が出力するすべての `AGMSG-DIRECTIVE` に従います。
 
 モードが `monitor` または `both` の場合、コマンドを処理する前に
 `agmsg inbox stream` Monitor が実行中であることを確認します。次の指定で
-起動します。
+起動します（`command` は `delivery`／`session-start` が出力する行をそのまま使います）。
 
 ```text
-command: "$SKILL_DIR/scripts/watch.sh" "$CLAUDE_CODE_SESSION_ID" "$(pwd)" claude-code
+command: python3 "$SKILL_DIR/agmsg.py" watch "$CLAUDE_CODE_SESSION_ID" "$(pwd)" claude-code
 description: agmsg inbox stream
 persistent: true
 ```
@@ -44,35 +44,41 @@ persistent: true
 
 `actas <name>` の場合:
 
-1. `identities.sh "$(pwd)" claude-code` で確認します。
-2. 存在しない場合は、現在のチームにそのロールを参加させます。必要であれば
-   チームを確認します。
-3. 次のコマンドでロールを確保します。
+1. 次のコマンドでロールを確保します（`$CLAUDE_CODE_SESSION_ID` を使用）。
 
    ```bash
-   "$SKILL_DIR/scripts/actas-claim.sh" "$(pwd)" claude-code <name> "$CLAUDE_CODE_SESSION_ID"
+   CLAUDE_CODE_SESSION_ID="$CLAUDE_CODE_SESSION_ID" \
+     python3 "$SKILL_DIR/agmsg.py" actas <name> --project "$(pwd)" --type claude-code
    ```
 
-4. `status=held` の場合は中止し、所有しているセッションを報告します。
-5. 既存の `agmsg inbox stream` Monitor があれば停止します。タスク ID を
+   そのロールが未登録の場合は `--team <team>` を付けて参加と確保を同時に行います。
+2. 出力が `status=held` の場合は中止し、所有しているセッションを報告します。
+3. 既存の `agmsg inbox stream` Monitor があれば停止します。タスク ID を
    推測してはいけません。
-6. `<name>` を `watch.sh` の第 4 引数に指定し、永続 Monitor を起動します。
-7. `<name>` を送信者として使用し、そのロール宛てのメッセージだけを受信します。
+4. 出力された `AGMSG-DIRECTIVE` に従い、`<name>` で絞り込んだ永続 Monitor を
+   起動します（`watch` の第 4 引数が `<name>`）。
+5. `<name>` を送信者として使用し、そのロール宛てのメッセージだけを受信します。
 
 `drop <name>` の場合:
 
 1. 次を実行します。
 
    ```bash
-   "$SKILL_DIR/scripts/reset.sh" "$(pwd)" claude-code <name> "$CLAUDE_CODE_SESSION_ID"
+   CLAUDE_CODE_SESSION_ID="$CLAUDE_CODE_SESSION_ID" \
+     python3 "$SKILL_DIR/agmsg.py" drop <name> --project "$(pwd)" --type claude-code
    ```
 
 2. 現在の agmsg Monitor があれば停止します。
-3. フィルターなしの既定 Monitor を再起動します。
+3. 出力された `AGMSG-DIRECTIVE` に従い、フィルターなしの既定 Monitor を
+   再起動します。
 4. 削除したロールが現在の送信者であれば、送信者の設定を解除します。
 
 ## 配信
 
-`mode` の場合は、`delivery.sh status` の出力を表示します。`mode <name>` の
-場合は、そのモードを設定して出力された指示に従います。`hook on` は `turn`、
-`hook off` は `off` として扱います。
+`mode` の場合は、次の出力を表示します。
+
+```bash
+python3 "$SKILL_DIR/agmsg.py" delivery status claude-code "$(pwd)"
+```
+
+`mode <name>` の場合は、そのモードを設定して出力された指示に従います。

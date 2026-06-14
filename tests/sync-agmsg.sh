@@ -69,6 +69,9 @@ runtime_dir="$success_root/.agmsg"
 [ "$(cat "$success_home/.codex/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ "$(cat "$success_home/.claude/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ -f "$runtime_dir/db/messages.db" ]
+# the Python CLI is runnable after sync (no executable bit required)
+python3 "$success_home/.codex/skills/agmsg/agmsg.py" whoami "$success_root" codex \
+  | grep -q 'not_joined=true'
 
 dry_run_output="$(
   cd "$success_root"
@@ -84,7 +87,7 @@ failure_root="$tmp_dir/failure"
 make_fixture "$failure_root"
 failure_home="$failure_root/home"
 mkdir -p "$failure_home"
-chmod -x "$failure_root/skills/agmsg/install.sh"
+printf 'import sys\nsys.exit(1)\n' > "$failure_root/skills/agmsg/agmsg.py"
 set +e
 failure_output="$(
   cd "$failure_root"

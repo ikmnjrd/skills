@@ -2,3 +2,6 @@
 .test-tmp/
 .agmsg/
 skills/agmsg/runtime-path
+skills/agmsg/python-path
+__pycache__/
+*.pyc

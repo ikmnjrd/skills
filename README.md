@@ -47,8 +47,9 @@ skills/
     SKILL.md
     SKILL.codex.md
     SKILL.claude-code.md
-    install.sh
-    scripts/
+    agmsg.py
+    agmsg_cli/
+    tests/
     VENDOR.md
 LICENSES/
   mattpocock-skills-LICENSE

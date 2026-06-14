@@ -308,12 +308,13 @@ fi
 
 setup_failed=()
 if contains_skill agmsg; then
+  installer="$REPO_ROOT/skills/agmsg/agmsg.py"
   for agent in "${agents[@]}"; do
     target_dir="$(target_dir_for "$agent")"
-    installer="$target_dir/agmsg/install.sh"
-    if [ ! -x "$installer" ] || ! "$installer" \
+    installed_skill="$target_dir/agmsg"
+    if [ ! -f "$installer" ] || [ ! -f "$installed_skill/SKILL.md" ] || ! python3 "$installer" install \
       --repo-root "$REPO_ROOT" \
-      --skill-dir "$target_dir/agmsg" \
+      --skill-dir "$installed_skill" \
       >"$tmp_dir/agmsg-setup-$agent.out" \
       2>"$tmp_dir/agmsg-setup-$agent.err"; then
       setup_failed+=("$agent/agmsg")
@@ -334,7 +335,7 @@ if [ "${#setup_failed[@]}" -gt 0 ]; then
       printf 'Setup error (%s):\n' "$item"
       sed 's/^/  /' "$error_file"
     else
-      printf 'Setup error (%s): installer missing or not executable\n' "$item"
+      printf 'Setup error (%s): source installer or installed skill missing\n' "$item"
     fi
   done
   printf 'Uninstalled: none\n'
