@@ -7,8 +7,9 @@
     "retrievedAt": "2026-06-14",
     "license": "MIT",
     "localPath": "skills/agmsg",
-    "localChanges": "Converted to a conventional Codex and Claude Code skill with repository-local ignored runtime state, split environment instructions, and an idempotent installer.",
+    "localChanges": "Converted to a conventional Codex and Claude Code skill with repository-local ignored runtime state, split environment instructions, an idempotent installer, fully Japanese-localized Markdown skill instructions, bounded incremental inbox polling when turn-mode work is blocked on a peer response, and a maintenance README defining document ownership.",
     "includedFiles": [
+      "README.md",
       "SKILL.md",
       "SKILL.codex.md",
       "SKILL.claude-code.md",

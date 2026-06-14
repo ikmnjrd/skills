@@ -20,6 +20,12 @@ preserved at:
 - Split common instructions from Codex and Claude Code differences.
 - Store mutable state in the host skills repository's ignored `.agmsg/`.
 - Added runtime-path resolution and an idempotent skill-local installer.
+- Localized the complete Markdown skill instructions for Japanese-language
+  use while preserving commands and machine-readable identifiers.
+- Added bounded incremental inbox polling when turn-mode work is blocked on a
+  peer response.
+- Added a maintenance README defining common and environment-specific document
+  ownership.
 - Removed unsupported agent templates, plugin packaging, update, release,
   documentation, npm, and uninstall files.
 

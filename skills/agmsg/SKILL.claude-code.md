@@ -1,37 +1,38 @@
-# Claude Code Behavior
+# Claude Code での動作
 
-Set:
+次を設定します。
 
 ```text
 AGENT_TYPE=claude-code
 INVOCATION=/agmsg
 ```
 
-Claude Code supports `monitor`, `turn`, `both`, and `off`.
+Claude Code は `monitor`、`turn`、`both`、`off` に対応します。
 
-After first join, ask the user to choose:
+初めて参加した後、ユーザーに次の選択を求めます。
 
 ```text
-Choose delivery mode for incoming messages:
+受信メッセージの配信モードを選択してください:
 
-  1) monitor - Real-time push through the Monitor tool. Recommended.
-  2) turn    - Check inbox at the end of each assistant turn.
-  3) both    - Monitor primary, turn fallback.
-  4) off     - No automatic delivery; manual /agmsg only.
+  1) monitor - Monitor ツールを通じてリアルタイムにプッシュします。推奨。
+  2) turn    - アシスタントの各ターン終了時に受信箱を確認します。
+  3) both    - Monitor を優先し、turn をフォールバックにします。
+  4) off     - 自動配信を行わず、手動の /agmsg だけを使用します。
 
 [1]:
 ```
 
-Wait for the answer. Empty input means `monitor`. Apply it with:
+回答を待ちます。空入力の場合は `monitor` とします。次のコマンドで適用します。
 
 ```bash
 "$SKILL_DIR/scripts/delivery.sh" set <mode> claude-code "$(pwd)"
 ```
 
-Follow every `AGMSG-DIRECTIVE` emitted by `delivery.sh`.
+`delivery.sh` が出力するすべての `AGMSG-DIRECTIVE` に従います。
 
-Before processing a command, ensure an `agmsg inbox stream` Monitor is running
-when the mode is `monitor` or `both`. Start it with:
+モードが `monitor` または `both` の場合、コマンドを処理する前に
+`agmsg inbox stream` Monitor が実行中であることを確認します。次の指定で
+起動します。
 
 ```text
 command: "$SKILL_DIR/scripts/watch.sh" "$CLAUDE_CODE_SESSION_ID" "$(pwd)" claude-code
@@ -39,38 +40,39 @@ description: agmsg inbox stream
 persistent: true
 ```
 
-## Roles
+## ロール
 
-For `actas <name>`:
+`actas <name>` の場合:
 
-1. Check `identities.sh "$(pwd)" claude-code`.
-2. If absent, join the role to the current team. Ask which team if needed.
-3. Claim it with:
+1. `identities.sh "$(pwd)" claude-code` で確認します。
+2. 存在しない場合は、現在のチームにそのロールを参加させます。必要であれば
+   チームを確認します。
+3. 次のコマンドでロールを確保します。
 
    ```bash
    "$SKILL_DIR/scripts/actas-claim.sh" "$(pwd)" claude-code <name> "$CLAUDE_CODE_SESSION_ID"
    ```
 
-4. Abort on `status=held`; report the owner session.
-5. Stop the existing `agmsg inbox stream` Monitor if one exists. Never guess a
-   task ID.
-6. Start a persistent Monitor with `<name>` as the fourth `watch.sh` argument.
-7. Use `<name>` as sender and receive only that role's messages.
+4. `status=held` の場合は中止し、所有しているセッションを報告します。
+5. 既存の `agmsg inbox stream` Monitor があれば停止します。タスク ID を
+   推測してはいけません。
+6. `<name>` を `watch.sh` の第 4 引数に指定し、永続 Monitor を起動します。
+7. `<name>` を送信者として使用し、そのロール宛てのメッセージだけを受信します。
 
-For `drop <name>`:
+`drop <name>` の場合:
 
-1. Run:
+1. 次を実行します。
 
    ```bash
    "$SKILL_DIR/scripts/reset.sh" "$(pwd)" claude-code <name> "$CLAUDE_CODE_SESSION_ID"
    ```
 
-2. Stop the current agmsg Monitor if present.
-3. Restart the default unfiltered Monitor.
-4. Clear the active sender if it was dropped.
+2. 現在の agmsg Monitor があれば停止します。
+3. フィルターなしの既定 Monitor を再起動します。
+4. 削除したロールが現在の送信者であれば、送信者の設定を解除します。
 
-## Delivery
+## 配信
 
-For `mode`, show the `delivery.sh status` output. For `mode <name>`, set the
-mode and follow its directive. `hook on` maps to `turn`; `hook off` maps to
-`off`.
+`mode` の場合は、`delivery.sh status` の出力を表示します。`mode <name>` の
+場合は、そのモードを設定して出力された指示に従います。`hook on` は `turn`、
+`hook off` は `off` として扱います。
