@@ -105,9 +105,11 @@ add_agent() {
     agent_option_seen=true
   fi
 
-  for existing in "${agents[@]}"; do
-    [ "$existing" = "$candidate" ] && return
-  done
+  if [ "${#agents[@]}" -gt 0 ]; then
+    for existing in "${agents[@]}"; do
+      [ "$existing" = "$candidate" ] && return
+    done
+  fi
   agents+=("$candidate")
 }
 
@@ -240,6 +242,19 @@ print_items() {
   fi
 }
 
+print_array_items() {
+  local label="$1"
+  local array_name="$2"
+  local count
+
+  eval 'count="${#'"$array_name"'[@]}"'
+  if [ "$count" -eq 0 ]; then
+    print_items "$label"
+  else
+    eval 'print_items "$label" "${'"$array_name"'[@]}"'
+  fi
+}
+
 planned=()
 for agent in "${agents[@]}"; do
   for skill in "${skills[@]}"; do
@@ -250,15 +265,15 @@ done
 if [ "$dry_run" = true ]; then
   printf 'Result: dry-run\n'
   printf 'Scope: %s\n' "$scope"
-  print_items "Install" "${planned[@]}"
+  print_array_items "Install" planned
   setup_planned=()
   if contains_skill agmsg; then
     for agent in "${agents[@]}"; do
       setup_planned+=("$agent/agmsg")
     done
   fi
-  print_items "Setup" "${setup_planned[@]}"
-  print_items "Uninstall" "${removed[@]}"
+  print_array_items "Setup" setup_planned
+  print_array_items "Uninstall" removed
   exit 0
 fi
 
@@ -300,8 +315,8 @@ if [ "${#failed[@]}" -gt 0 ]; then
   stop_activity failure
   printf 'Result: failed\n'
   printf 'Scope: %s\n' "$scope"
-  print_items "Installed" "${installed[@]}"
-  print_items "Failed" "${failed[@]}"
+  print_array_items "Installed" installed
+  print_array_items "Failed" failed
   printf 'Uninstalled: none\n'
   exit 1
 fi
@@ -330,8 +345,8 @@ if [ "${#setup_failed[@]}" -gt 0 ]; then
   stop_activity failure
   printf 'Result: failed\n'
   printf 'Scope: %s\n' "$scope"
-  print_items "Installed" "${installed[@]}"
-  print_items "Setup failed" "${setup_failed[@]}"
+  print_array_items "Installed" installed
+  print_array_items "Setup failed" setup_failed
   for item in "${setup_failed[@]}"; do
     agent="${item%%/*}"
     error_file="$tmp_dir/agmsg-setup-$agent.err"
@@ -348,14 +363,16 @@ fi
 
 stop_activity success
 
-for item in "${removed[@]}"; do
-  agent="${item%%/*}"
-  skill="${item#*/}"
-  target_dir="$(target_dir_for "$agent")"
-  rm -rf -- "$target_dir/$skill"
-done
+if [ "${#removed[@]}" -gt 0 ]; then
+  for item in "${removed[@]}"; do
+    agent="${item%%/*}"
+    skill="${item#*/}"
+    target_dir="$(target_dir_for "$agent")"
+    rm -rf -- "$target_dir/$skill"
+  done
+fi
 
 printf 'Result: synchronized\n'
 printf 'Scope: %s\n' "$scope"
-print_items "Installed" "${installed[@]}"
-print_items "Uninstalled" "${removed[@]}"
+print_array_items "Installed" installed
+print_array_items "Uninstalled" removed
