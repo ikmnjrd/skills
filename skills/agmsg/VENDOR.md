@@ -47,6 +47,9 @@ preserved at:
 - Added Codex monitor health reporting, stale bridge cleanup, and a Stop-hook
   fallback so sessions that were not launched through the shim still receive
   messages between turns instead of failing silently.
+- Added Codex Desktop bridge startup from the first Stop hook. It uses the
+  Desktop-provided thread ID and a detached app-server, allowing real-time
+  delivery without requiring the CLI shim.
 
 ## Update policy
 

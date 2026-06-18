@@ -18,6 +18,8 @@ Codex起動だけをブリッジ経由に切り替えます。Codexやapp-server
 
 bridgeが起動していないセッションでは、`Stop` hookがフォールバックとして
 各ターン終了時に受信箱を確認します。この場合はリアルタイム配信ではありません。
+Codex Desktopでは、最初の`Stop` hookが`CODEX_THREAD_ID`を使って専用bridgeを
+起動します。bridgeが起動するまでは同じhookがフォールバック配信を行います。
 
 初めて参加した後、ユーザーに次の選択を求めます。
 
@@ -108,8 +110,9 @@ shimはmonitor対象プロジェクトの対話起動（`codex`、`codex resume`
 - Codex identityは1プロジェクトにつき1つです。
 - bridgeはターンを直列化します。ターン中に届いたメッセージは、そのターン終了後に
   配信されます。
-- Codex Desktopやshimを経由せず開始したセッションではbridgeを後付けできません。
-  そのセッションでは`Stop` hookによるターン間配信へフォールバックします。
+- Codex Desktopでは最初のターン終了後に専用bridgeを後付けします。
+- Desktop以外でshimを経由せず開始し、thread IDも取得できないセッションでは
+  `Stop` hookによるターン間配信へフォールバックします。
 - TUI終了時のbridge自動停止はCodex側イベントに依存するため、孤児プロセスが
   残る場合があります。`mode off`でプロジェクトのbridgeを停止できます。
 - shimはプロジェクト間で共有されるため、`mode off`では削除しません。不要なら

@@ -108,6 +108,51 @@ def resolve_thread_id(project: str) -> str:
     return ""
 
 
+def desktop_thread_busy(thread_id: str) -> bool:
+    """Read the rollout journal to detect turns active in another app-server.
+
+    A detached Desktop bridge has its own app-server connection, so
+    ``thread/resume`` does not reliably expose a turn currently running in the
+    Desktop app-server. The rollout journal is shared by both and records
+    balanced ``task_started`` / ``task_complete`` events.
+    """
+    home = os.environ.get("HOME")
+    if not home or not thread_id:
+        return False
+    sessions = Path(home) / ".codex" / "sessions"
+    if not sessions.is_dir():
+        return False
+    try:
+        files = sorted(
+            sessions.rglob(f"rollout-*{thread_id}.jsonl"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return False
+    active = 0
+    for path in reversed(files):
+        try:
+            stream = path.open(encoding="utf-8")
+        except OSError:
+            continue
+        with stream:
+            for line in stream:
+                try:
+                    item = json.loads(line)
+                except ValueError:
+                    continue
+                if item.get("type") != "event_msg":
+                    continue
+                payload = item.get("payload")
+                kind = payload.get("type") if isinstance(payload, dict) else None
+                if kind == "task_started":
+                    active += 1
+                elif kind == "task_complete":
+                    active = max(0, active - 1)
+    return active > 0
+
+
 def publish_session_request(project: str) -> bool:
     """Publish the Codex SessionStart rendezvous consumed by the launcher."""
     pairs = identity.identities(project, "codex")
@@ -132,6 +177,76 @@ def publish_session_request(project: str) -> bool:
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+    return True
+
+
+def is_desktop_session() -> bool:
+    """Return whether this hook is running inside a Codex Desktop thread."""
+    return (
+        os.environ.get("CODEX_INTERNAL_ORIGINATOR_OVERRIDE") == "Codex Desktop"
+        and bool(os.environ.get("CODEX_THREAD_ID"))
+    )
+
+
+def start_desktop_bridge(project: str) -> bool:
+    """Start a detached bridge for the current Codex Desktop thread.
+
+    Desktop does not launch through the optional Codex shim, so there is no
+    shared app-server socket to rendezvous with. A fresh app-server can still
+    resume the current thread by ID. This is started from the Stop hook, when
+    the Desktop turn is idle, to avoid racing the turn that launched the hook.
+    """
+    if not is_desktop_session():
+        return False
+    pairs = identity.identities(project, "codex")
+    if len(pairs) != 1:
+        return False
+    team, name = pairs[0]
+    pid = _read_pid(bridge_path(team, name, "pid"))
+    if pid and _pid_alive(pid):
+        return True
+    thread_id = os.environ["CODEX_THREAD_ID"]
+    log_path = bridge_path(team, name, "log")
+    command_override = os.environ.get("AGMSG_CODEX_BRIDGE_CMD")
+    command = (
+        shlex.split(command_override)
+        if command_override
+        else [
+            plat.python_executable(),
+            str(plat.agmsg_py()),
+            "codex-bridge",
+        ]
+    )
+    command += [
+        "--project",
+        str(Path(project).resolve()),
+        "--type",
+        "codex",
+        "--team",
+        team,
+        "--name",
+        name,
+        "--thread",
+        thread_id,
+        "--inline-inbox",
+    ]
+    env = dict(os.environ)
+    env["AGMSG_CODEX_DESKTOP_BRIDGE"] = "1"
+    try:
+        env["AGMSG_REAL_CODEX"] = _real_codex(shim_target())
+    except AgmsgError:
+        pass
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("ab") as stream:
+        subprocess.Popen(
+            command,
+            cwd=project,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stream,
+            stderr=stream,
+            start_new_session=True,
+        )
     return True
 
 
@@ -506,6 +621,7 @@ class CodexBridge:
         self.last_wake_max_id = 0
         self.stale_wake_count = 0
         self.stopping = False
+        self.retry_timer: threading.Timer | None = None
         self.pidfile = bridge_path(team, name, "pid")
         self.metafile = bridge_path(team, name, "meta")
 
@@ -555,6 +671,10 @@ class CodexBridge:
                     break
                 if method == "_stop":
                     break
+                if method == "_retry":
+                    self.retry_timer = None
+                    self._try_start_turn()
+                    continue
                 if self._handle_event(method, params):
                     break
             return 0
@@ -707,6 +827,18 @@ class CodexBridge:
     def _try_start_turn(self) -> None:
         if not self.pending_wake or self.turn_active or not self.thread_idle:
             return
+        if (
+            os.environ.get("AGMSG_CODEX_DESKTOP_BRIDGE") == "1"
+            and self.thread_id
+            and desktop_thread_busy(self.thread_id)
+        ):
+            if self.retry_timer is None:
+                self.retry_timer = threading.Timer(
+                    1.0, lambda: self.client.events.put(("_retry", {}))
+                )
+                self.retry_timer.daemon = True
+                self.retry_timer.start()
+            return
         inbox = self._read_inbox() if self.inline_inbox else ""
         if self.inline_inbox and not inbox.strip():
             sys.stderr.write(
@@ -815,6 +947,9 @@ class CodexBridge:
 
     def _shutdown(self) -> None:
         self.stopping = True
+        if self.retry_timer is not None:
+            self.retry_timer.cancel()
+            self.retry_timer = None
         if self.watch_handle and not self.client.closed:
             try:
                 self.client.request(

@@ -20,6 +20,7 @@ import threading
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_DIR))
@@ -664,6 +665,24 @@ class TestAtomicSave(Base):
 
 
 class TestCodexMonitor(Base):
+    def setUp(self):
+        super().setUp()
+        self._ambient_codex_bridge_env = {
+            key: os.environ.pop(key)
+            for key in (
+                "AGMSG_CODEX_BRIDGE",
+                "AGMSG_CODEX_BRIDGE_APP_SERVER",
+                "AGMSG_CODEX_BRIDGE_LAUNCHER",
+                "AGMSG_CODEX_DESKTOP_BRIDGE",
+                "AGMSG_REAL_CODEX",
+            )
+            if key in os.environ
+        }
+
+    def tearDown(self):
+        os.environ.update(self._ambient_codex_bridge_env)
+        super().tearDown()
+
     def _environment(self, **changes):
         previous = dict(os.environ)
         os.environ.update({k: str(v) for k, v in changes.items()})
@@ -810,6 +829,52 @@ class TestCodexMonitor(Base):
         self.assertEqual(request["name"], "alice")
         self.assertEqual(request["thread"], "thread-123")
 
+    def test_codex_desktop_bridge_starts_for_current_thread(self):
+        identity.join("team", "alice", "codex", self.project)
+        previous = self._environment(
+            CODEX_INTERNAL_ORIGINATOR_OVERRIDE="Codex Desktop",
+            CODEX_THREAD_ID="desktop-thread",
+            AGMSG_REAL_CODEX="/usr/bin/true",
+        )
+        try:
+            with mock.patch.object(codex.subprocess, "Popen") as popen:
+                self.assertTrue(codex.start_desktop_bridge(self.project))
+        finally:
+            self._restore_environment(previous)
+        argv = popen.call_args.args[0]
+        self.assertIn("codex-bridge", argv)
+        self.assertEqual(argv[argv.index("--thread") + 1], "desktop-thread")
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        self.assertEqual(
+            popen.call_args.kwargs["env"]["AGMSG_CODEX_DESKTOP_BRIDGE"], "1"
+        )
+
+    def test_codex_desktop_stop_hook_starts_bridge(self):
+        identity.join("team", "alice", "codex", self.project)
+        delivery.apply("monitor", "codex", self.project)
+        with mock.patch.object(
+            codex, "start_desktop_bridge", return_value=True
+        ) as start:
+            self.assertEqual(
+                delivery.check_inbox("codex", self.project),
+                ("none", ""),
+            )
+        start.assert_called_once_with(self.project)
+
+    def test_codex_session_end_stops_desktop_bridge_without_session_id(self):
+        with mock.patch.object(codex, "stop_bridges", return_value=1) as stop:
+            self.assertEqual(delivery.session_end("codex", self.project), "")
+        stop.assert_called_once_with(self.project)
+
+    def test_codex_nested_desktop_bridge_session_end_does_not_stop_itself(self):
+        previous = self._environment(AGMSG_CODEX_DESKTOP_BRIDGE="1")
+        try:
+            with mock.patch.object(codex, "stop_bridges") as stop:
+                self.assertEqual(delivery.session_end("codex", self.project), "")
+        finally:
+            self._restore_environment(previous)
+        stop.assert_not_called()
+
     def test_resolve_thread_id_from_rollout(self):
         sessions = Path(self.tmp) / "home" / ".codex" / "sessions" / "2026" / "06" / "18"
         sessions.mkdir(parents=True)
@@ -827,6 +892,36 @@ class TestCodexMonitor(Base):
         os.environ.pop("CODEX_THREAD_ID", None)
         try:
             self.assertEqual(codex.resolve_thread_id(self.project), "rollout-thread")
+        finally:
+            self._restore_environment(previous)
+
+    def test_desktop_thread_busy_tracks_started_and_completed_turns(self):
+        sessions = Path(self.tmp) / "home" / ".codex" / "sessions" / "2026" / "06" / "19"
+        sessions.mkdir(parents=True)
+        rollout = sessions / "rollout-test-desktop-thread.jsonl"
+        rollout.write_text(
+            "\n".join(
+                json.dumps(
+                    {"type": "event_msg", "payload": {"type": kind}}
+                )
+                for kind in ("task_started", "task_complete", "task_started")
+            )
+            + "\n"
+        )
+        previous = self._environment(HOME=Path(self.tmp) / "home")
+        try:
+            self.assertTrue(codex.desktop_thread_busy("desktop-thread"))
+            with rollout.open("a") as stream:
+                stream.write(
+                    json.dumps(
+                        {
+                            "type": "event_msg",
+                            "payload": {"type": "task_complete"},
+                        }
+                    )
+                    + "\n"
+                )
+            self.assertFalse(codex.desktop_thread_busy("desktop-thread"))
         finally:
             self._restore_environment(previous)
 

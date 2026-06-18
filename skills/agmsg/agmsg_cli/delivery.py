@@ -566,6 +566,11 @@ def check_inbox(agent_type: str, project: str, hook_input: str = "") -> tuple[st
 
         if codex.bridge_status(project)["alive"]:
             return ("defer", "")
+        # Codex Desktop does not pass through the CLI shim. Its Stop hook runs
+        # after the turn becomes idle, which is the safe point to attach a
+        # detached app-server bridge to the current CODEX_THREAD_ID.
+        if status_mode(agent_type, project) == "monitor":
+            codex.start_desktop_bridge(project)
 
     sid = _extract_session_id(hook_input) or os.environ.get(
         "CLAUDE_CODE_SESSION_ID", ""
@@ -690,6 +695,15 @@ def session_start(agent_type: str, project: str, hook_input: str = "") -> str:
 
 def session_end(agent_type: str, project: str, hook_input: str = "") -> str:
     """SessionEnd hook: stop this session's watcher and release locks."""
+    if agent_type == "codex":
+        from . import codex
+
+        # A Desktop bridge starts its own app-server, which also executes the
+        # project's SessionEnd hook when an injected turn finishes. Do not let
+        # that nested hook kill the bridge that owns it. The real Desktop
+        # process has no marker and still performs cleanup on session exit.
+        if os.environ.get("AGMSG_CODEX_DESKTOP_BRIDGE") != "1":
+            codex.stop_bridges(project)
     sid = _extract_session_id(hook_input)
     if not sid:
         return ""
