@@ -11,6 +11,7 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
 - `extract-glossary` — リポジトリ群から用語集、実装マップ、技術構成、オンボーディング向け Mermaid 図を生成します。
 - `agmsg` — ローカル SQLite を使い、Codex と Claude Code のセッション間でメッセージを送受信します。
+- `request-claude-review` — `claude -p` を使い、Claude Code へ単発のレビューを依頼します。オリジナルスキルです。
 
 ## ディレクトリ構成
 
@@ -51,6 +52,8 @@ skills/
     agmsg_cli/
     tests/
     VENDOR.md
+  request-claude-review/
+    SKILL.md
 LICENSES/
   mattpocock-skills-LICENSE
   mizchi-skills-LICENSE-NOTICE
