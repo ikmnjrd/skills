@@ -92,6 +92,25 @@ def unread(team: str, agent: str) -> list[sqlite3.Row]:
         conn.close()
 
 
+def unread_status(pairs: list[tuple[str, str]]) -> tuple[int, int]:
+    """Return ``(count, max_id)`` for unread messages in ``pairs``."""
+    if not db_exists() or not pairs:
+        return (0, 0)
+    clause, params = _pairs_clause(pairs)
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM messages "
+            f"WHERE read_at IS NULL AND ({clause})",
+            params,
+        ).fetchone()
+        return (int(row[0]), int(row[1])) if row else (0, 0)
+    except sqlite3.Error:
+        return (0, 0)
+    finally:
+        conn.close()
+
+
 def mark_read(team: str, agent: str) -> None:
     """Mark all currently-unread messages for (team, agent) as read."""
     if not db_exists():

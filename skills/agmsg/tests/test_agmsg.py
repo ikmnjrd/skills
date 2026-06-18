@@ -5,11 +5,18 @@ OS-specific spawn paths are covered with mocks (no real terminals launched).
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import io
 import json
 import os
+import socket
+import struct
+import subprocess
 import sys
 import tempfile
+import textwrap
+import threading
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -17,7 +24,7 @@ from pathlib import Path
 SKILL_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SKILL_DIR))
 
-from agmsg_cli import commands, config, delivery, identity, locking, spawn, storage  # noqa: E402
+from agmsg_cli import codex, commands, config, delivery, identity, locking, spawn, storage  # noqa: E402
 from agmsg_cli import platform as plat  # noqa: E402
 from agmsg_cli.envelope import AgmsgError  # noqa: E402
 import agmsg  # noqa: E402
@@ -197,9 +204,17 @@ class TestDelivery(Base):
         f = delivery.hooks_file("codex", self.project)
         self.assertIn("Stop", json.loads(f.read_text())["hooks"])
 
-    def test_codex_rejects_monitor(self):
+    def test_codex_monitor(self):
+        delivery.apply("monitor", "codex", self.project)
+        self.assertEqual(delivery.status_mode("codex", self.project), "monitor")
+        f = delivery.hooks_file("codex", self.project)
+        data = json.loads(f.read_text())
+        self.assertIn("SessionStart", data["hooks"])
+        self.assertIn("SessionEnd", data["hooks"])
+
+    def test_codex_rejects_both(self):
         with self.assertRaises(AgmsgError):
-            delivery.apply("monitor", "codex", self.project)
+            delivery.apply("both", "codex", self.project)
 
     def test_off_strips_entries(self):
         delivery.apply("both", "claude-code", self.project)
@@ -582,6 +597,571 @@ class TestAtomicSave(Base):
             if p.name.startswith(".tmp.")
         ]
         self.assertEqual(leftovers, [])
+
+
+class TestCodexMonitor(Base):
+    def _environment(self, **changes):
+        previous = dict(os.environ)
+        os.environ.update({k: str(v) for k, v in changes.items()})
+        return previous
+
+    def _restore_environment(self, previous):
+        os.environ.clear()
+        os.environ.update(previous)
+
+    def _fake_app_server(self, mode: str) -> tuple[Path, Path]:
+        script = Path(self.tmp) / "fake_app_server.py"
+        log = Path(self.tmp) / "fake_app_server.log"
+        script.write_text(
+            textwrap.dedent(
+                r"""
+                import json
+                import sys
+                import threading
+
+                mode, log_path = sys.argv[1:3]
+                wakes = 0
+                turns = 0
+
+                def send(value):
+                    sys.stdout.write(json.dumps(value) + "\n")
+                    sys.stdout.flush()
+
+                def notify(method, params):
+                    send({"jsonrpc": "2.0", "method": method, "params": params})
+
+                for line in sys.stdin:
+                    message = json.loads(line)
+                    method = message.get("method")
+                    with open(log_path, "a", encoding="utf-8") as stream:
+                        stream.write(method + "\n")
+                    if method == "initialize":
+                        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+                    elif method == "thread/start":
+                        send({
+                            "jsonrpc": "2.0",
+                            "id": message["id"],
+                            "result": {"thread": {"id": "thread-1", "status": {"type": "idle"}}},
+                        })
+                    elif method == "thread/resume":
+                        send({
+                            "jsonrpc": "2.0",
+                            "id": message["id"],
+                            "result": {
+                                "thread": {
+                                    "id": message["params"]["threadId"],
+                                    "status": {"type": "active"},
+                                }
+                            },
+                        })
+                        threading.Timer(
+                            0.08,
+                            notify,
+                            args=(
+                                "thread/status/changed",
+                                {
+                                    "threadId": message["params"]["threadId"],
+                                    "status": {"type": "idle"},
+                                },
+                            ),
+                        ).start()
+                    elif method == "process/spawn":
+                        wakes += 1
+                        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+                        max_id = 7 if mode == "stale" else wakes
+                        if mode == "active":
+                            max_id = 5 if turns == 0 else 6
+                        threading.Timer(
+                            0.01,
+                            notify,
+                            args=(
+                                "process/exited",
+                                {
+                                    "processHandle": message["params"]["processHandle"],
+                                    "exitCode": 0,
+                                    "stdout": f"status=pending count=1 max_id={max_id}\n",
+                                    "stderr": "",
+                                },
+                            ),
+                        ).start()
+                    elif method == "turn/start":
+                        turns += 1
+                        text = message["params"]["input"][0]["text"]
+                        if mode == "inline" and "inline body reaches prompt" not in text:
+                            send({
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "error": {"message": "missing inline body"},
+                            })
+                            continue
+                        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+                        if mode != "watchdog":
+                            threading.Timer(
+                                0.01,
+                                notify,
+                                args=(
+                                    "turn/completed",
+                                    {"threadId": message["params"]["threadId"]},
+                                ),
+                            ).start()
+                    elif method == "process/kill":
+                        send({"jsonrpc": "2.0", "id": message["id"], "result": {}})
+                """
+            ).lstrip(),
+            encoding="utf-8",
+        )
+        return script, log
+
+    def test_watch_once_reports_pending_without_marking_read(self):
+        identity.join("team", "alice", "codex", self.project)
+        storage.send("team", "bob", "alice", "ping")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            rc = codex.watch_once(
+                self.project,
+                "codex",
+                team="team",
+                name="alice",
+                timeout=1,
+                interval=1,
+            )
+        self.assertEqual(rc, 0)
+        self.assertIn("status=pending count=1", output.getvalue())
+        self.assertEqual(len(storage.unread("team", "alice")), 1)
+
+    def test_codex_session_start_publishes_launcher_request(self):
+        identity.join("team", "alice", "codex", self.project)
+        previous = self._environment(
+            AGMSG_CODEX_BRIDGE="1",
+            AGMSG_CODEX_BRIDGE_LAUNCHER="1",
+            AGMSG_CODEX_BRIDGE_APP_SERVER="unix:///tmp/agmsg-test.sock",
+            CODEX_THREAD_ID="thread-123",
+        )
+        try:
+            self.assertEqual(delivery.session_start("codex", self.project), "")
+        finally:
+            self._restore_environment(previous)
+        request = json.loads(codex.request_path(self.project).read_text())
+        self.assertEqual(request["team"], "team")
+        self.assertEqual(request["name"], "alice")
+        self.assertEqual(request["thread"], "thread-123")
+
+    def test_resolve_thread_id_from_rollout(self):
+        sessions = Path(self.tmp) / "home" / ".codex" / "sessions" / "2026" / "06" / "18"
+        sessions.mkdir(parents=True)
+        rollout = sessions / "rollout-test.jsonl"
+        rollout.write_text(
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "rollout-thread", "cwd": self.project},
+                }
+            )
+            + "\n"
+        )
+        previous = self._environment(HOME=Path(self.tmp) / "home")
+        os.environ.pop("CODEX_THREAD_ID", None)
+        try:
+            self.assertEqual(codex.resolve_thread_id(self.project), "rollout-thread")
+        finally:
+            self._restore_environment(previous)
+
+    def test_shim_routes_only_interactive_monitor_launches(self):
+        fake_bin = Path(self.tmp) / "bin"
+        fake_bin.mkdir()
+        real = fake_bin / "codex"
+        real.write_text("#!/bin/sh\nexit 0\n")
+        real.chmod(0o755)
+        delivery.apply("monitor", "codex", self.project)
+        previous = self._environment(
+            PATH=str(fake_bin),
+            HOME=Path(self.tmp) / "home",
+            AGMSG_CODEX_SHIM_TARGET=Path(self.tmp) / "home" / ".agents" / "bin" / "codex",
+        )
+        try:
+            executable, argv, env = codex.shim_invocation(
+                ["--cd", self.project, "resume", "--last"]
+            )
+            self.assertEqual(executable, plat.python_executable())
+            self.assertIn("codex-monitor", argv)
+            self.assertIn("--last", argv)
+            self.assertEqual(env["AGMSG_REAL_CODEX"], str(real.resolve()))
+
+            executable, argv, _ = codex.shim_invocation(
+                ["--cd", self.project, "exec", "echo", "hi"]
+            )
+            self.assertEqual(executable, str(real.resolve()))
+            self.assertIn("exec", argv)
+            self.assertNotIn("codex-monitor", argv)
+        finally:
+            self._restore_environment(previous)
+
+    def test_shim_installer_refuses_foreign_command(self):
+        previous = self._environment(HOME=Path(self.tmp) / "home")
+        try:
+            target = codex.shim_target()
+            target.parent.mkdir(parents=True)
+            target.write_text("#!/bin/sh\necho foreign\n")
+            with self.assertRaises(AgmsgError):
+                codex.install_shim()
+            self.assertIn("foreign", target.read_text())
+        finally:
+            self._restore_environment(previous)
+
+    def test_shim_path_check_requires_precedence_over_real_codex(self):
+        real_dir = Path(self.tmp) / "real-bin"
+        real_dir.mkdir()
+        real = real_dir / "codex"
+        real.write_text("#!/bin/sh\nexit 0\n")
+        real.chmod(0o755)
+        home = Path(self.tmp) / "home"
+        shim_dir = home / ".agents" / "bin"
+        previous = self._environment(
+            HOME=home,
+            PATH=f"{real_dir}{os.pathsep}{shim_dir}",
+        )
+        try:
+            target, on_path = codex.install_shim()
+            self.assertFalse(on_path)
+            os.environ["PATH"] = f"{shim_dir}{os.pathsep}{real_dir}"
+            target, on_path = codex.install_shim()
+            self.assertTrue(on_path)
+            self.assertEqual(target, shim_dir / "codex")
+        finally:
+            self._restore_environment(previous)
+
+    def test_generated_shim_passes_non_monitor_commands_to_real_codex(self):
+        real_dir = Path(self.tmp) / "real-bin"
+        real_dir.mkdir()
+        real = real_dir / "codex"
+        real.write_text("#!/bin/sh\nprintf 'real:%s\\n' \"$*\"\n")
+        real.chmod(0o755)
+        home = Path(self.tmp) / "home"
+        shim_dir = home / ".agents" / "bin"
+        previous = self._environment(
+            HOME=home,
+            PATH=f"{shim_dir}{os.pathsep}{real_dir}",
+        )
+        try:
+            target, on_path = codex.install_shim()
+            self.assertTrue(on_path)
+            result = subprocess.run(
+                [str(target), "--version"],
+                cwd=self.project,
+                env=dict(os.environ),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "real:--version")
+        finally:
+            self._restore_environment(previous)
+
+    def test_switching_codex_monitor_to_turn_stops_bridge(self):
+        identity.join("team", "alice", "codex", self.project)
+        process = subprocess.Popen(["sleep", "60"])
+        pidfile = codex.bridge_path("team", "alice", "pid")
+        metafile = codex.bridge_path("team", "alice", "meta")
+        logfile = codex.bridge_path("team", "alice", "log")
+        pidfile.write_text(f"{process.pid}\n")
+        metafile.write_text(f"pid={process.pid}\nproject={self.project}\n")
+        logfile.write_text("")
+        try:
+            delivery.apply("monitor", "codex", self.project)
+            delivery.do_set("turn", "codex", self.project)
+            process.wait(timeout=2)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        self.assertFalse(pidfile.exists())
+        self.assertFalse(metafile.exists())
+        self.assertFalse(logfile.exists())
+
+    def test_bridge_rearms_via_watchdog(self):
+        identity.join("team", "alice", "codex", self.project)
+        script, log = self._fake_app_server("watchdog")
+        previous = self._environment(
+            AGMSG_CODEX_APP_SERVER_CMD=f"{sys.executable} {script} watchdog {log}"
+        )
+        try:
+            bridge = codex.CodexBridge(
+                self.project,
+                "team",
+                "alice",
+                timeout=1,
+                interval=1,
+                max_wakes=2,
+                turn_timeout=0.05,
+            )
+            self.assertEqual(bridge.run(), 0)
+        finally:
+            self._restore_environment(previous)
+        methods = log.read_text().splitlines()
+        self.assertEqual(methods.count("process/spawn"), 2)
+        self.assertEqual(methods.count("turn/start"), 2)
+
+    def test_bridge_delivers_wake_after_active_thread_becomes_idle(self):
+        identity.join("team", "alice", "codex", self.project)
+        script, log = self._fake_app_server("active")
+        previous = self._environment(
+            AGMSG_CODEX_APP_SERVER_CMD=f"{sys.executable} {script} active {log}"
+        )
+        try:
+            bridge = codex.CodexBridge(
+                self.project,
+                "team",
+                "alice",
+                thread_id="thread-active",
+                timeout=1,
+                interval=1,
+                max_wakes=2,
+                turn_timeout=1,
+            )
+            self.assertEqual(bridge.run(), 0)
+        finally:
+            self._restore_environment(previous)
+        methods = log.read_text().splitlines()
+        self.assertGreaterEqual(methods.count("turn/start"), 1)
+        self.assertEqual(methods.count("process/spawn"), 2)
+
+    def test_bridge_inlines_and_marks_inbox_read(self):
+        identity.join("team", "alice", "codex", self.project)
+        storage.send("team", "bob", "alice", "inline body reaches prompt")
+        script, log = self._fake_app_server("inline")
+        previous = self._environment(
+            AGMSG_CODEX_APP_SERVER_CMD=f"{sys.executable} {script} inline {log}"
+        )
+        try:
+            bridge = codex.CodexBridge(
+                self.project,
+                "team",
+                "alice",
+                timeout=1,
+                interval=1,
+                max_wakes=1,
+                turn_timeout=1,
+                inline_inbox=True,
+            )
+            self.assertEqual(bridge.run(), 0)
+        finally:
+            self._restore_environment(previous)
+        self.assertIn("turn/start", log.read_text())
+        self.assertEqual(storage.unread("team", "alice"), [])
+
+    def test_bridge_stops_repeated_stale_wakeup(self):
+        identity.join("team", "alice", "codex", self.project)
+        script, log = self._fake_app_server("stale")
+        previous = self._environment(
+            AGMSG_CODEX_APP_SERVER_CMD=f"{sys.executable} {script} stale {log}"
+        )
+        try:
+            bridge = codex.CodexBridge(
+                self.project,
+                "team",
+                "alice",
+                timeout=1,
+                interval=1,
+                turn_timeout=1,
+            )
+            with self.assertRaises(AgmsgError) as raised:
+                bridge.run()
+            self.assertEqual(raised.exception.code, "stale_wakeup")
+        finally:
+            self._restore_environment(previous)
+
+    def test_bridge_connects_over_websocket_unix_socket(self):
+        identity.join("team", "alice", "codex", self.project)
+        sock_path = str(Path(self.tmp) / "app-server.sock")
+        methods = []
+        server_errors = []
+        ready = threading.Event()
+
+        def recv_exact(conn, size):
+            data = bytearray()
+            while len(data) < size:
+                chunk = conn.recv(size - len(data))
+                if not chunk:
+                    raise EOFError
+                data.extend(chunk)
+            return bytes(data)
+
+        def recv_frame(conn):
+            first, second = recv_exact(conn, 2)
+            length = second & 0x7F
+            if length == 126:
+                length = struct.unpack("!H", recv_exact(conn, 2))[0]
+            elif length == 127:
+                length = struct.unpack("!Q", recv_exact(conn, 8))[0]
+            mask = recv_exact(conn, 4) if second & 0x80 else b""
+            payload = recv_exact(conn, length)
+            if mask:
+                payload = bytes(
+                    value ^ mask[index % 4]
+                    for index, value in enumerate(payload)
+                )
+            return first & 0x0F, payload
+
+        def send_json(conn, value):
+            payload = json.dumps(value).encode()
+            if len(payload) < 126:
+                header = bytes((0x81, len(payload)))
+            else:
+                header = bytes((0x81, 126)) + struct.pack("!H", len(payload))
+            conn.sendall(header + payload)
+
+        def server():
+            listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                listener.bind(sock_path)
+            except OSError as exc:
+                server_errors.append(exc)
+                listener.close()
+                ready.set()
+                return
+            listener.listen(1)
+            ready.set()
+            conn, _ = listener.accept()
+            try:
+                header = bytearray()
+                while b"\r\n\r\n" not in header:
+                    header.extend(conn.recv(1))
+                text = header.decode("latin1")
+                key = next(
+                    line.split(":", 1)[1].strip()
+                    for line in text.split("\r\n")
+                    if line.lower().startswith("sec-websocket-key:")
+                )
+                accept = base64.b64encode(
+                    hashlib.sha1(
+                        (
+                            key
+                            + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+                        ).encode()
+                    ).digest()
+                ).decode()
+                conn.sendall(
+                    (
+                        "HTTP/1.1 101 Switching Protocols\r\n"
+                        "Upgrade: websocket\r\n"
+                        "Connection: Upgrade\r\n"
+                        f"Sec-WebSocket-Accept: {accept}\r\n\r\n"
+                    ).encode()
+                )
+                while True:
+                    opcode, payload = recv_frame(conn)
+                    if opcode == 0x8:
+                        break
+                    message = json.loads(payload)
+                    method = message.get("method")
+                    methods.append(method)
+                    if method == "initialize":
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "result": {},
+                            },
+                        )
+                    elif method == "thread/resume":
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "result": {
+                                    "thread": {
+                                        "id": message["params"]["threadId"],
+                                        "status": {"type": "idle"},
+                                    }
+                                },
+                            },
+                        )
+                    elif method == "process/spawn":
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "result": {},
+                            },
+                        )
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "method": "process/exited",
+                                "params": {
+                                    "processHandle": message["params"][
+                                        "processHandle"
+                                    ],
+                                    "exitCode": 0,
+                                    "stdout": "status=pending count=1 max_id=1\n",
+                                    "stderr": "",
+                                },
+                            },
+                        )
+                    elif method == "turn/start":
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "result": {},
+                            },
+                        )
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "method": "turn/completed",
+                                "params": {
+                                    "threadId": message["params"]["threadId"]
+                                },
+                            },
+                        )
+                    elif method == "process/kill":
+                        send_json(
+                            conn,
+                            {
+                                "jsonrpc": "2.0",
+                                "id": message["id"],
+                                "result": {},
+                            },
+                        )
+            except (EOFError, OSError):
+                pass
+            finally:
+                conn.close()
+                listener.close()
+
+        thread = threading.Thread(target=server, daemon=True)
+        thread.start()
+        self.assertTrue(ready.wait(2))
+        if server_errors:
+            self.skipTest(
+                f"Unix socket listen is unavailable in this sandbox: "
+                f"{server_errors[0]}"
+            )
+        bridge = codex.CodexBridge(
+            self.project,
+            "team",
+            "alice",
+            thread_id="thread-existing",
+            app_server=f"unix://{sock_path}",
+            timeout=1,
+            interval=1,
+            max_wakes=1,
+            turn_timeout=1,
+        )
+        self.assertEqual(bridge.run(), 0)
+        thread.join(timeout=2)
+        self.assertIn("initialize", methods)
+        self.assertIn("thread/resume", methods)
+        self.assertIn("process/spawn", methods)
+        self.assertIn("turn/start", methods)
 
 
 if __name__ == "__main__":

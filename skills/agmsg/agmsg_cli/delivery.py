@@ -5,7 +5,8 @@ entries exist in the per-project hook file:
   - claude-code -> <project>/.claude/settings.local.json
   - codex       -> <project>/.codex/hooks.json
 
-Valid modes: claude-code = monitor|turn|both|off; codex = turn|off.
+Valid modes: claude-code = monitor|turn|both|off;
+codex = monitor|turn|off (monitor is an experimental app-server bridge).
 
 Hook commands invoke this same CLI via the recorded absolute Python +
 agmsg.py paths, e.g. ``<python> <agmsg.py> check-inbox <type> <project>``.
@@ -31,7 +32,7 @@ _OWNED_MARKERS = ("agmsg.py", "/agmsg/scripts/")
 
 VALID_MODES = {
     "claude-code": ("monitor", "turn", "both", "off"),
-    "codex": ("turn", "off"),
+    "codex": ("monitor", "turn", "off"),
 }
 
 
@@ -390,17 +391,75 @@ def do_set(mode: str, agent_type: str, project: str) -> str:
     apply(mode, agent_type, project)
     lines = [f"Delivery mode set to '{mode}' for {project} ({agent_type})"]
     if mode in ("monitor", "both"):
+        if agent_type == "codex":
+            from . import codex
+
+            try:
+                target, on_path = codex.install_shim()
+                lines.append(f"Codex monitor shim installed at {target}.")
+                if on_path:
+                    lines.append(
+                        "Future Codex sessions: launch with codex; interactive "
+                        "sessions in this project will use the monitor bridge."
+                    )
+                else:
+                    lines.extend(
+                        [
+                            "WARNING: ~/.agents/bin is NOT on your PATH, so "
+                            "'codex' still launches the real binary and the "
+                            "monitor bridge will NOT engage.",
+                            'Add this line, restart your shell, then launch with codex:',
+                            '  export PATH="$HOME/.agents/bin:$PATH"',
+                        ]
+                    )
+            except AgmsgError as exc:
+                lines.append(
+                    "Codex monitor mode is enabled, but the shim was not "
+                    f"installed: {exc.message}"
+                )
+                lines.append(
+                    f"Launch explicitly with: {plat.python_executable()} "
+                    f"{plat.agmsg_py()} codex-monitor --project "
+                    f"{shlex.quote(project)}"
+                )
+            lines.extend(
+                [
+                    "Restart Codex and send the first message; SessionStart "
+                    "fires on that first turn.",
+                    f"For more info: {codex.MONITOR_DOC_URL}",
+                ]
+            )
+            return "\n".join(lines)
         lines.append(
             "Future sessions: SessionStart hook will auto-launch the watcher."
         )
         lines.append(emit_monitor_directive(agent_type, project))
     elif mode == "turn":
         lines.append("Future sessions: Stop hook will check inbox between turns.")
-        kill_all_watchers(project)
+        if agent_type == "codex":
+            from . import codex
+
+            codex.stop_bridges(project)
+        else:
+            kill_all_watchers(project)
         lines.append(emit_stop_directive())
     else:  # off
         lines.append("Future sessions: no automatic delivery.")
-        kill_all_watchers(project)
+        if agent_type == "codex":
+            from . import codex
+
+            killed = codex.stop_bridges(project)
+            if killed:
+                lines.append(
+                    f"Stopped {killed} Codex bridge process(es) for this project."
+                )
+            lines.append(
+                "The shared ~/.agents/bin/codex shim was left in place. "
+                "Remove it with `agmsg.py codex-shim-install remove` when no "
+                "project uses monitor mode."
+            )
+        else:
+            kill_all_watchers(project)
         lines.append(emit_stop_directive())
     return "\n".join(lines)
 
@@ -508,6 +567,52 @@ def check_inbox(agent_type: str, project: str, hook_input: str = "") -> tuple[st
 def session_start(agent_type: str, project: str, hook_input: str = "") -> str:
     """SessionStart hook: emit the directive to launch the Monitor watcher."""
     if not identity.identities(project, agent_type):
+        return ""
+    if agent_type == "codex":
+        from . import codex
+
+        if os.environ.get("AGMSG_CODEX_BRIDGE") != "1":
+            return ""
+        if os.environ.get("AGMSG_CODEX_BRIDGE_LAUNCHER") == "1":
+            codex.publish_session_request(project)
+            return ""
+        # Direct launch is retained for explicit/testing use. Normal monitor
+        # sessions use the outside-sandbox launcher rendezvous above.
+        pairs = identity.identities(project, agent_type)
+        thread_id = codex.resolve_thread_id(project)
+        endpoint = os.environ.get("AGMSG_CODEX_BRIDGE_APP_SERVER", "")
+        if len(pairs) == 1 and thread_id and endpoint:
+            team, name = pairs[0]
+            log = codex.bridge_path(team, name, "log")
+            command_override = os.environ.get("AGMSG_CODEX_BRIDGE_CMD")
+            command = (
+                shlex.split(command_override)
+                if command_override
+                else [
+                    plat.python_executable(),
+                    str(plat.agmsg_py()),
+                    "codex-bridge",
+                ]
+            )
+            command += [
+                "--project", project,
+                "--type", agent_type,
+                "--team", team,
+                "--name", name,
+                "--thread", thread_id,
+                "--app-server", endpoint,
+                "--inline-inbox",
+            ]
+            log.parent.mkdir(parents=True, exist_ok=True)
+            with log.open("ab") as stream:
+                subprocess.Popen(
+                    command,
+                    cwd=project,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stream,
+                    stderr=stream,
+                    start_new_session=True,
+                )
         return ""
     sid = _extract_session_id(hook_input) or f"unknown-{os.getpid()}"
     register_session(sid)

@@ -3,8 +3,8 @@
 Upstream: https://github.com/ikmnjrd/agmsg
 Author: fujibee
 Original path: repository root
-Imported ref: ae155a5ad7500625970ace02d66aadfd6fb0c760
-Retrieved: 2026-06-14
+Imported ref: 13815c1f7614a8e6b6689fda42976bce5d127fbc
+Retrieved: 2026-06-18
 License: MIT
 
 ## Attribution
@@ -39,6 +39,11 @@ preserved at:
 - Added a maintenance README defining common and environment-specific document
   ownership.
 - Added a unittest unit/integration suite under `tests/`.
+- Ported upstream's Codex monitor bridge beta to the standard-library Python
+  implementation. The single CLI now provides one-shot unread detection,
+  stdio and WebSocket-over-Unix app-server clients, serialized turn delivery,
+  watchdog re-arming, the outside-sandbox launcher rendezvous, explicit
+  monitor launch, and a generated Python Codex shim.
 
 ## Update policy
 

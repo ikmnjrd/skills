@@ -37,6 +37,8 @@ HELP = (
     "  delivery set <mode> <type> <project> | status <type> <project> | stop | restart\n"
     "  actas <name> [--project P] [--type T] [--team T]\n"
     "  drop <name> [--project P] [--type T]\n"
+    "  codex-monitor [--project P] [--codex-command codex|resume] [-- ARGS...]\n"
+    "  codex-shim-install [install|remove|status]\n"
 )
 
 

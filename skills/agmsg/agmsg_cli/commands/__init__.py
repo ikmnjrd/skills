@@ -3,7 +3,8 @@
 Public commands: install, whoami, join, leave, inbox, send, history, team,
 rename, rename-team, reset, spawn, config, delivery, actas, drop.
 Internal (hook/runtime) commands: identities, watch, session-start,
-session-end, check-inbox.
+session-end, check-inbox, watch-once, codex-bridge,
+codex-bridge-launcher, codex-shim.
 
 A handler returns either a result dict ``{"human": str, "data": Any}`` (the
 dispatcher renders it via the envelope) or an ``int`` exit code (the handler
@@ -17,7 +18,7 @@ import sys
 from typing import Any, Callable
 
 from .. import config as configmod
-from .. import delivery, identity, install, spawn, storage
+from .. import codex, delivery, identity, install, spawn, storage
 from .. import platform as plat
 from ..envelope import AgmsgError
 
@@ -387,6 +388,181 @@ def cmd_check_inbox(args, as_json):
     return 0
 
 
+def _positive_int(value: str, option: str, *, allow_zero: bool = False) -> int:
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise AgmsgError("bad_args", f"{option} must be an integer", 2)
+    if parsed < 0 or (parsed == 0 and not allow_zero):
+        qualifier = "non-negative" if allow_zero else "positive"
+        raise AgmsgError("bad_args", f"{option} must be a {qualifier} integer", 2)
+    return parsed
+
+
+def cmd_watch_once(args, as_json):
+    pos, opts = _opts(
+        args,
+        {
+            "--team": "value",
+            "--name": "value",
+            "--timeout": "value",
+            "--interval": "value",
+        },
+    )
+    _need(
+        pos,
+        2,
+        "watch-once <project> <type> [--team T] [--name N] "
+        "[--timeout SEC] [--interval SEC]",
+    )
+    timeout = _positive_int(opts.get("timeout", "300"), "--timeout")
+    interval = _positive_int(opts.get("interval", "2"), "--interval")
+    return codex.watch_once(
+        pos[0],
+        pos[1],
+        team=opts.get("team"),
+        name=opts.get("name"),
+        timeout=timeout,
+        interval=interval,
+    )
+
+
+def cmd_codex_bridge(args, as_json):
+    pos, opts = _opts(
+        args,
+        {
+            "--project": "value",
+            "--type": "value",
+            "--team": "value",
+            "--name": "value",
+            "--timeout": "value",
+            "--interval": "value",
+            "--max-wakes": "value",
+            "--stale-wake-limit": "value",
+            "--turn-timeout": "value",
+            "--app-server": "value",
+            "--thread": "value",
+            "--inline-inbox": "bool",
+            "--resolve-only": "bool",
+        },
+    )
+    if pos:
+        raise AgmsgError("bad_args", f"unknown option: {pos[0]}", 2)
+    project = opts.get("project")
+    if not project:
+        raise AgmsgError("bad_args", "--project is required", 2)
+    project = os.path.realpath(project)
+    if not os.path.isdir(project):
+        raise AgmsgError(
+            "bad_project", f"project path is not a directory: {project}", 2
+        )
+    thread = opts.get("thread")
+    if thread == "current":
+        thread = os.environ.get("CODEX_THREAD_ID")
+        if not thread:
+            raise AgmsgError(
+                "bad_args", "--thread current requires CODEX_THREAD_ID", 2
+            )
+    options = {
+        "project": project,
+        "type": opts.get("type", "codex"),
+        "team": opts.get("team"),
+        "name": opts.get("name"),
+        "timeout": _positive_int(opts.get("timeout", "300"), "--timeout"),
+        "interval": _positive_int(opts.get("interval", "2"), "--interval"),
+        "max_wakes": _positive_int(
+            opts.get("max-wakes", "0"), "--max-wakes", allow_zero=True
+        ),
+        "stale_wake_limit": _positive_int(
+            opts.get("stale-wake-limit", "1"),
+            "--stale-wake-limit",
+            allow_zero=True,
+        ),
+        "turn_timeout": _positive_int(
+            opts.get("turn-timeout", "60"),
+            "--turn-timeout",
+            allow_zero=True,
+        ),
+        "app_server": opts.get("app-server"),
+        "thread": thread,
+        "inline_inbox": opts.get("inline-inbox", False),
+        "resolve_only": opts.get("resolve-only", False),
+    }
+    return codex.run_bridge(options)
+
+
+def cmd_codex_bridge_launcher(args, as_json):
+    _need(
+        args,
+        4,
+        "codex-bridge-launcher <type> <project> <app-server> <parent-pid>",
+    )
+    parent_pid = _positive_int(args[3], "<parent-pid>")
+    return codex.bridge_launcher(args[0], args[1], args[2], parent_pid)
+
+
+def cmd_codex_monitor(args, as_json):
+    before, after = args, []
+    if "--" in args:
+        index = args.index("--")
+        before, after = args[:index], args[index + 1 :]
+    pos, opts = _opts(
+        before,
+        {
+            "--project": "value",
+            "--socket-path": "value",
+            "--codex-command": "value",
+        },
+    )
+    if pos:
+        raise AgmsgError("bad_args", f"unknown option: {pos[0]}", 2)
+    return codex.run_monitor(
+        opts.get("project", os.getcwd()),
+        opts.get("codex-command", "resume"),
+        after,
+        opts.get("socket-path"),
+    )
+
+
+def cmd_codex_shim(args, as_json):
+    return codex.run_shim(args)
+
+
+def cmd_codex_shim_install(args, as_json):
+    action = args[0] if args else "install"
+    if action == "install":
+        target, on_path = codex.install_shim()
+        lines = [f"installed: {target}"]
+        if not on_path:
+            lines.append(f"note: add {target.parent} before the real Codex on PATH")
+        return {
+            "human": "\n".join(lines),
+            "data": {"installed": True, "path": str(target), "on_path": on_path},
+        }
+    if action in ("remove", "uninstall"):
+        removed = codex.remove_shim()
+        return {
+            "human": (
+                f"removed: {codex.shim_target()}"
+                if removed
+                else f"not installed: {codex.shim_target()}"
+            ),
+            "data": {"removed": removed},
+        }
+    if action == "status":
+        target = codex.shim_target()
+        installed = codex._is_our_shim(target)
+        return {
+            "human": (
+                f"installed: {target}" if installed else f"not installed: {target}"
+            ),
+            "data": {"installed": installed, "path": str(target)},
+        }
+    raise AgmsgError(
+        "bad_args", "usage: codex-shim-install [install|remove|status]", 2
+    )
+
+
 COMMANDS: dict[str, Callable[[list[str], bool], Any]] = {
     "install": cmd_install,
     "whoami": cmd_whoami,
@@ -410,4 +586,10 @@ COMMANDS: dict[str, Callable[[list[str], bool], Any]] = {
     "session-start": cmd_session_start,
     "session-end": cmd_session_end,
     "check-inbox": cmd_check_inbox,
+    "watch-once": cmd_watch_once,
+    "codex-bridge": cmd_codex_bridge,
+    "codex-bridge-launcher": cmd_codex_bridge_launcher,
+    "codex-monitor": cmd_codex_monitor,
+    "codex-shim": cmd_codex_shim,
+    "codex-shim-install": cmd_codex_shim_install,
 }

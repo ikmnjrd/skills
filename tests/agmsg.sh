@@ -78,9 +78,18 @@ grep -Fq "session-start" "$claude_settings"
 grep -Fq "session-end" "$claude_settings"
 ! grep -Fq "$runtime_dir" "$claude_settings"
 
-# codex rejects monitor mode
-if agmsg delivery set monitor codex "$project_dir" >/dev/null 2>&1; then
-  echo "expected codex monitor mode to be rejected" >&2
+# delivery: codex monitor installs SessionStart/SessionEnd and a Python shim
+HOME="$home_dir" agmsg delivery set monitor codex "$project_dir" >/dev/null
+grep -Fq "session-start" "$codex_hooks"
+grep -Fq "session-end" "$codex_hooks"
+[ -x "$home_dir/.agents/bin/codex" ]
+grep -Fq "Optional Codex entrypoint shim for agmsg monitor mode" \
+  "$home_dir/.agents/bin/codex"
+grep -Fq "'codex-shim'" "$home_dir/.agents/bin/codex"
+
+# codex bridge beta deliberately rejects both mode
+if agmsg delivery set both codex "$project_dir" >/dev/null 2>&1; then
+  echo "expected codex both mode to be rejected" >&2
   exit 1
 fi
 
