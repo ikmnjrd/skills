@@ -989,6 +989,29 @@ def _is_our_shim(path: Path) -> bool:
         return False
 
 
+def _first_codex_on_path() -> Path | None:
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(directory or ".") / "codex"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            try:
+                return candidate.resolve()
+            except OSError:
+                return candidate.absolute()
+    return None
+
+
+def shim_status() -> dict[str, Any]:
+    target = shim_target()
+    resolved = _first_codex_on_path()
+    installed = _is_our_shim(target)
+    return {
+        "path": str(target),
+        "installed": installed,
+        "on_path": installed and resolved == target.resolve(),
+        "resolved": str(resolved) if resolved else "",
+    }
+
+
 def install_shim() -> tuple[Path, bool]:
     target = shim_target()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1008,12 +1031,7 @@ def install_shim() -> tuple[Path, bool]:
     )
     target.write_text(script, encoding="utf-8")
     target.chmod(0o755)
-    first_codex = None
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        candidate = Path(directory or ".") / "codex"
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            first_codex = candidate.resolve()
-            break
+    first_codex = _first_codex_on_path()
     return target, first_codex == target.resolve()
 
 
@@ -1246,3 +1264,38 @@ def stop_bridges(project: str) -> int:
     except OSError:
         pass
     return killed
+
+
+def bridge_status(project: str) -> dict[str, Any]:
+    states = []
+    alive = stale = 0
+    for team, name in identity.identities(project, "codex"):
+        pidfile = bridge_path(team, name, "pid")
+        pid = _read_pid(pidfile)
+        is_alive = bool(pid and _pid_alive(pid))
+        has_state = pidfile.exists() or bridge_path(team, name, "meta").exists()
+        if is_alive:
+            alive += 1
+        elif has_state:
+            stale += 1
+        states.append(
+            {"team": team, "name": name, "pid": pid, "alive": is_alive}
+        )
+    return {"alive": alive, "stale": stale, "states": states}
+
+
+def cleanup_stale_bridges(project: str) -> int:
+    removed = 0
+    for team, name in identity.identities(project, "codex"):
+        pidfile = bridge_path(team, name, "pid")
+        pid = _read_pid(pidfile)
+        if pid and _pid_alive(pid):
+            continue
+        for suffix in ("pid", "meta"):
+            path = bridge_path(team, name, suffix)
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                pass
+    return removed

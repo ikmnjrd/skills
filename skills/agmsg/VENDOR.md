@@ -44,6 +44,9 @@ preserved at:
   stdio and WebSocket-over-Unix app-server clients, serialized turn delivery,
   watchdog re-arming, the outside-sandbox launcher rendezvous, explicit
   monitor launch, and a generated Python Codex shim.
+- Added Codex monitor health reporting, stale bridge cleanup, and a Stop-hook
+  fallback so sessions that were not launched through the shim still receive
+  messages between turns instead of failing silently.
 
 ## Update policy
 

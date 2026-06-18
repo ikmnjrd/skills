@@ -143,6 +143,14 @@ def apply(mode: str, agent_type: str, project: str) -> None:
         hooks.setdefault("SessionEnd", []).append(
             _entry(hook_command("session-end", agent_type, project))
         )
+        # The Codex app-server bridge only exists when Codex was launched
+        # through the generated shim. Keep a Stop-hook fallback so Desktop,
+        # an incorrectly ordered PATH, or a failed bridge does not silently
+        # leave messages unread. check_inbox() defers while a bridge is live.
+        if agent_type == "codex":
+            hooks.setdefault("Stop", []).append(
+                _entry(hook_command("check-inbox", agent_type, project))
+            )
     if mode in ("turn", "both"):
         hooks.setdefault("Stop", []).append(
             _entry(hook_command("check-inbox", agent_type, project))
@@ -162,6 +170,9 @@ def status_mode(agent_type: str, project: str) -> str:
         return "off"
     has_ss = any(_is_owned(e) for e in hooks.get("SessionStart", []) or [])
     has_st = any(_is_owned(e) for e in hooks.get("Stop", []) or [])
+    if agent_type == "codex" and has_ss:
+        # Codex monitor intentionally includes a Stop fallback.
+        return "monitor"
     if has_ss and has_st:
         return "both"
     if has_ss:
@@ -394,6 +405,9 @@ def do_set(mode: str, agent_type: str, project: str) -> str:
         if agent_type == "codex":
             from . import codex
 
+            cleaned = codex.cleanup_stale_bridges(project)
+            if cleaned:
+                lines.append(f"Removed {cleaned} stale Codex bridge state file(s).")
             try:
                 target, on_path = codex.install_shim()
                 lines.append(f"Codex monitor shim installed at {target}.")
@@ -424,6 +438,8 @@ def do_set(mode: str, agent_type: str, project: str) -> str:
                 )
             lines.extend(
                 [
+                    "A Stop-hook fallback is enabled; sessions not attached to "
+                    "the bridge will still receive messages between turns.",
                     "Restart Codex and send the first message; SessionStart "
                     "fires on that first turn.",
                     f"For more info: {codex.MONITOR_DOC_URL}",
@@ -474,6 +490,43 @@ def do_status(agent_type: str, project: str) -> str:
         for event in EVENTS:
             count = len(hooks.get(event, []) or []) if isinstance(hooks, dict) else 0
             lines.append(f"  {event} entries: {count}")
+    if agent_type == "codex":
+        from . import codex
+
+        shim = codex.shim_status()
+        bridges = codex.bridge_status(project)
+        lines.append(f"identities: {len(identity.identities(project, agent_type))}")
+        lines.append(
+            f"shim: {'installed' if shim['installed'] else 'not installed'} "
+            f"at {shim['path']}"
+        )
+        lines.append(f"shim first on PATH: {'yes' if shim['on_path'] else 'no'}")
+        if shim["resolved"]:
+            lines.append(f"codex resolves to: {shim['resolved']}")
+        lines.append(
+            "bridge processes: "
+            f"{bridges['alive']} alive, {bridges['stale']} stale"
+        )
+        configured_hooks = _load_json(path).get("hooks", {})
+        stop_entries = (
+            configured_hooks.get("Stop", [])
+            if isinstance(configured_hooks, dict)
+            else []
+        )
+        fallback = status_mode(agent_type, project) == "monitor" and any(
+            _is_owned(e) for e in (stop_entries or [])
+        )
+        lines.append(f"turn fallback: {'enabled' if fallback else 'disabled'}")
+        if mode == "monitor":
+            if bridges["alive"]:
+                health = "active"
+            elif fallback:
+                health = "degraded (turn fallback; bridge is not running)"
+            else:
+                health = "broken (bridge is not running and no fallback exists)"
+            lines.append(f"health: {health}")
+        return "\n".join(lines)
+
     alive = dead = 0
     for pidfile in _watch_pidfiles():
         try:
@@ -508,6 +561,12 @@ def check_inbox(agent_type: str, project: str, hook_input: str = "") -> tuple[st
       - ``none``     — no new messages
       - ``messages`` — text holds the rendered unread digest
     """
+    if agent_type == "codex":
+        from . import codex
+
+        if codex.bridge_status(project)["alive"]:
+            return ("defer", "")
+
     sid = _extract_session_id(hook_input) or os.environ.get(
         "CLAUDE_CODE_SESSION_ID", ""
     )

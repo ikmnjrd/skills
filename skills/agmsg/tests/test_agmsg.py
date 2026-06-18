@@ -211,6 +211,70 @@ class TestDelivery(Base):
         data = json.loads(f.read_text())
         self.assertIn("SessionStart", data["hooks"])
         self.assertIn("SessionEnd", data["hooks"])
+        self.assertIn("Stop", data["hooks"])
+
+    def test_codex_monitor_status_reports_degraded_fallback(self):
+        identity.join("team", "alice", "codex", self.project)
+        delivery.apply("monitor", "codex", self.project)
+        previous = os.environ.get("HOME")
+        os.environ["HOME"] = str(Path(self.tmp) / "home")
+        try:
+            status = delivery.do_status("codex", self.project)
+        finally:
+            if previous is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = previous
+        self.assertIn("bridge processes: 0 alive, 0 stale", status)
+        self.assertIn("turn fallback: enabled", status)
+        self.assertIn("health: degraded", status)
+
+    def test_codex_monitor_fallback_defers_to_live_bridge(self):
+        identity.join("team", "alice", "codex", self.project)
+        process = subprocess.Popen(["sleep", "60"])
+        pidfile = codex.bridge_path("team", "alice", "pid")
+        pidfile.write_text(f"{process.pid}\n")
+        try:
+            self.assertEqual(
+                delivery.check_inbox("codex", self.project),
+                ("defer", ""),
+            )
+        finally:
+            process.terminate()
+            process.wait()
+
+    def test_codex_monitor_fallback_delivers_without_bridge(self):
+        identity.join("team", "alice", "codex", self.project)
+        storage.send("team", "bob", "alice", "fallback")
+        kind, text = delivery.check_inbox("codex", self.project)
+        self.assertEqual(kind, "messages")
+        self.assertIn("fallback", text)
+        self.assertEqual(storage.unread("team", "alice"), [])
+
+    def test_codex_monitor_set_cleans_stale_bridge_state(self):
+        identity.join("team", "alice", "codex", self.project)
+        pidfile = codex.bridge_path("team", "alice", "pid")
+        metafile = codex.bridge_path("team", "alice", "meta")
+        pidfile.write_text("99999999\n")
+        metafile.write_text("stale\n")
+        previous_home = os.environ.get("HOME")
+        previous_path = os.environ.get("PATH")
+        os.environ["HOME"] = str(Path(self.tmp) / "home")
+        os.environ["PATH"] = ""
+        try:
+            output = delivery.do_set("monitor", "codex", self.project)
+        finally:
+            if previous_home is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = previous_home
+            if previous_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = previous_path
+        self.assertIn("Removed 2 stale Codex bridge state file(s).", output)
+        self.assertFalse(pidfile.exists())
+        self.assertFalse(metafile.exists())
 
     def test_codex_rejects_both(self):
         with self.assertRaises(AgmsgError):
