@@ -1,0 +1,15 @@
+{
+  "japanese-tech-writing": {
+    "upstream": "https://gist.github.com/k16shikano/fd287c3133457c4fd8f5601d34aa817d",
+    "author": "k16shikano",
+    "originalPath": "SKILL.md",
+    "importedRef": "5ed08e4475365fd233aa0d3ab71c19b87e1a5732",
+    "retrievedAt": "2026-06-19",
+    "license": "No explicit license found in the gist at retrieval time",
+    "localPath": "skills/japanese-tech-writing",
+    "localChanges": "none",
+    "includedFiles": [
+      "SKILL.md"
+    ]
+  }
+}

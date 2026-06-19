@@ -131,7 +131,23 @@ fi
 
 declare -a lock_files=()
 declare -a removed_upstreams=()
-declare -A seen_upstreams=()
+
+has_removed_upstream() {
+  local candidate="$1"
+  local upstream
+
+  if [ "${#removed_upstreams[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  for upstream in "${removed_upstreams[@]}"; do
+    if [ "$upstream" = "$candidate" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 for lock_file in "$REPO_ROOT"/vendor/*.lock.json; do
   [ -f "$lock_file" ] || continue
@@ -152,9 +168,8 @@ for lock_file in "$REPO_ROOT"/vendor/*.lock.json; do
 
     while IFS= read -r upstream; do
       [ -n "$upstream" ] || continue
-      if [ -z "${seen_upstreams[$upstream]+x}" ]; then
+      if ! has_removed_upstream "$upstream"; then
         removed_upstreams+=("$upstream")
-        seen_upstreams["$upstream"]=1
       fi
     done < <(
       jq -r --arg path "$local_path" \
@@ -165,24 +180,26 @@ for lock_file in "$REPO_ROOT"/vendor/*.lock.json; do
 done
 
 declare -a unused_upstreams=()
-for upstream in "${removed_upstreams[@]}"; do
-  remains=false
-  for lock_file in "$REPO_ROOT"/vendor/*.lock.json; do
-    [ -f "$lock_file" ] || continue
-    lock_input="$lock_file"
-    if [ -f "$tmp_dir/$(basename -- "$lock_file")" ]; then
-      lock_input="$tmp_dir/$(basename -- "$lock_file")"
-    fi
-    if jq -e --arg upstream "$upstream" \
-      'any(.[]; .upstream == $upstream)' "$lock_input" >/dev/null; then
-      remains=true
-      break
+if [ "${#removed_upstreams[@]}" -gt 0 ]; then
+  for upstream in "${removed_upstreams[@]}"; do
+    remains=false
+    for lock_file in "$REPO_ROOT"/vendor/*.lock.json; do
+      [ -f "$lock_file" ] || continue
+      lock_input="$lock_file"
+      if [ -f "$tmp_dir/$(basename -- "$lock_file")" ]; then
+        lock_input="$tmp_dir/$(basename -- "$lock_file")"
+      fi
+      if jq -e --arg upstream "$upstream" \
+        'any(.[]; .upstream == $upstream)' "$lock_input" >/dev/null; then
+        remains=true
+        break
+      fi
+    done
+    if [ "$remains" = false ]; then
+      unused_upstreams+=("$upstream")
     fi
   done
-  if [ "$remains" = false ]; then
-    unused_upstreams+=("$upstream")
-  fi
-done
+fi
 
 if [ "$dry_run" = true ]; then
   printf 'Result: dry-run\n'
@@ -192,12 +209,16 @@ fi
 printf 'Skill: %s\n' "$skill_name"
 printf 'Remove: skills/%s\n' "$skill_name"
 printf 'Update: README.md\n'
-for lock_file in "${lock_files[@]}"; do
-  printf 'Update: %s\n' "${lock_file#"$REPO_ROOT"/}"
-done
-for upstream in "${unused_upstreams[@]}"; do
-  printf 'Review attribution: %s has no remaining vendored skills\n' "$upstream"
-done
+if [ "${#lock_files[@]}" -gt 0 ]; then
+  for lock_file in "${lock_files[@]}"; do
+    printf 'Update: %s\n' "${lock_file#"$REPO_ROOT"/}"
+  done
+fi
+if [ "${#unused_upstreams[@]}" -gt 0 ]; then
+  for upstream in "${unused_upstreams[@]}"; do
+    printf 'Review attribution: %s has no remaining vendored skills\n' "$upstream"
+  done
+fi
 
 if [ "$dry_run" = true ]; then
   exit 0
@@ -212,9 +233,11 @@ if ! (
 fi
 
 mv -- "$updated_readme" "$readme"
-for lock_file in "${lock_files[@]}"; do
-  mv -- "$tmp_dir/$(basename -- "$lock_file")" "$lock_file"
-done
+if [ "${#lock_files[@]}" -gt 0 ]; then
+  for lock_file in "${lock_files[@]}"; do
+    mv -- "$tmp_dir/$(basename -- "$lock_file")" "$lock_file"
+  done
+fi
 rm -rf -- "$skill_dir"
 
 if ! (

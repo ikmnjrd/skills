@@ -3,7 +3,23 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 declare -a changed_skills=()
-declare -A seen_skills=()
+
+has_changed_skill() {
+  local candidate="$1"
+  local skill
+
+  if [ "${#changed_skills[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  for skill in "${changed_skills[@]}"; do
+    if [ "$skill" = "$candidate" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 while IFS= read -r -d '' path; do
   case "$path" in
@@ -16,9 +32,8 @@ while IFS= read -r -d '' path; do
       ;;
   esac
 
-  if [ -z "${seen_skills[$skill_name]+x}" ]; then
+  if ! has_changed_skill "$skill_name"; then
     changed_skills+=("$skill_name")
-    seen_skills["$skill_name"]=1
   fi
 done < <(git diff --cached --name-only --diff-filter=ACDMRT -z -- skills/)
 

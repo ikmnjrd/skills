@@ -3,7 +3,23 @@ set -euo pipefail
 
 found_skill=false
 declare -a skills_to_validate=()
-declare -A seen_skills=()
+
+has_skill_to_validate() {
+  local candidate="$1"
+  local skill
+
+  if [ "${#skills_to_validate[@]}" -eq 0 ]; then
+    return 1
+  fi
+
+  for skill in "${skills_to_validate[@]}"; do
+    if [ "$skill" = "$candidate" ]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required to validate vendor lock files" >&2
@@ -50,9 +66,8 @@ else
       exit 1
     fi
 
-    if [ -z "${seen_skills[$skill]+x}" ]; then
+    if ! has_skill_to_validate "$skill"; then
       skills_to_validate+=("$skill")
-      seen_skills["$skill"]=1
     fi
   done
 fi

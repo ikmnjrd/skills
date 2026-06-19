@@ -47,3 +47,16 @@ The original copyright and MIT license text are preserved under:
 This repository adapts agmsg into a conventional Agent Skill and stores
 mutable runtime state outside the vendored skill directory. Local changes are
 documented in `skills/agmsg/VENDOR.md`.
+
+The skill under `skills/japanese-tech-writing` is vendored from:
+
+- Source: https://gist.github.com/k16shikano/fd287c3133457c4fd8f5601d34aa817d
+- Author: k16shikano
+- Original path: `SKILL.md`
+- License: no explicit license found in the gist at retrieval time
+
+The missing explicit license declaration is recorded in:
+
+- `LICENSES/k16shikano-japanese-tech-writing-LICENSE-NOTICE`
+
+The upstream skill file is preserved without local content changes.
