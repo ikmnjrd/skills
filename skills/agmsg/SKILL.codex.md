@@ -23,10 +23,10 @@ npm/Volta版の`codex`がPATH上にある場合は、native install版またはC
 
 bridgeが起動していないセッションでは、`Stop` hookがフォールバックとして
 各ターン終了時に受信箱を確認します。この場合はリアルタイム配信ではありません。
-Codex Desktopでは、最初の`Stop` hookが`CODEX_THREAD_ID`を使って専用bridgeを
-起動します。bridgeは`.agmsg/run/codex-home`に書き込み可能な専用`CODEX_HOME`を
-作り、既存の認証・設定・sessionsを参照してapp-serverを起動します。bridgeが
-起動するまでは同じhookがフォールバック配信を行います。
+Codex Desktopでは、外部app-serverが作成したturnは開いているDesktop UIへ
+ライブ反映されません。そのためDesktopの`monitor`は、UIに表示される
+`Stop` hook fallbackで受信箱を配信します。bridgeが誤って残っている場合も、
+Desktopの`Stop` hookはbridgeを停止してからfallback配信します。
 
 初めて参加した後、ユーザーに次の選択を求めます。
 
@@ -107,6 +107,10 @@ shimを使わず明示的に起動する場合:
 python3 "$SKILL_DIR/agmsg.py" codex-monitor --project "$(pwd)"
 ```
 
+Codex Desktopでは、上記の`codex-monitor`/外部app-server経路は
+UIライブ表示に使いません。外部app-serverはsessionファイルへ追記できますが、
+現在開いているDesktop UIはその変更を購読しないためです。
+
 shimはmonitor対象プロジェクトの対話起動（`codex`、`codex resume`、プロンプト
 付き起動）だけをラップします。`codex exec`、`app-server`、`login`、`logout`
 などの非対話サブコマンドと、monitor対象外のプロジェクトは実Codexへそのまま
@@ -117,7 +121,8 @@ shimはmonitor対象プロジェクトの対話起動（`codex`、`codex resume`
 - Codex identityは1プロジェクトにつき1つです。
 - bridgeはターンを直列化します。ターン中に届いたメッセージは、そのターン終了後に
   配信されます。
-- Codex Desktopでは最初のターン終了後に専用bridgeを後付けします。
+- Codex Desktopでは外部app-server bridgeを使わず、`Stop` hook fallbackで
+  UIに表示される形のターン間配信を行います。
 - Desktop以外でshimを経由せず開始し、thread IDも取得できないセッションでは
   `Stop` hookによるターン間配信へフォールバックします。
 - TUI終了時のbridge自動停止はCodex側イベントに依存するため、孤児プロセスが

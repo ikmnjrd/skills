@@ -15,7 +15,6 @@ import os
 import queue
 import secrets
 import shlex
-import shutil
 import signal
 import socket
 import stat
@@ -69,51 +68,6 @@ def _read_pid(path: Path) -> int:
         return 0
 
 
-def _sync_file(src: Path, dst: Path) -> None:
-    if not src.is_file():
-        return
-    try:
-        if dst.is_file() and dst.stat().st_mtime >= src.stat().st_mtime:
-            return
-    except OSError:
-        pass
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dst)
-
-
-def _ensure_symlink(src: Path, dst: Path) -> None:
-    if not src.exists():
-        return
-    try:
-        if dst.is_symlink() and Path(os.readlink(dst)) == src:
-            return
-    except OSError:
-        pass
-    if dst.exists() or dst.is_symlink():
-        return
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    os.symlink(src, dst)
-
-
-def prepare_desktop_codex_home() -> str:
-    """Create a writable Codex home for the detached Desktop app-server."""
-    source = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
-    target = plat.run_dir() / "codex-home"
-    target.mkdir(parents=True, exist_ok=True)
-    for name in ("auth.json", "config.toml", "models_cache.json", "version.json"):
-        _sync_file(source / name, target / name)
-    for name in (
-        "sessions",
-        "plugins",
-        "skills",
-        "vendor_imports",
-        "attachments",
-        "rules",
-    ):
-        _ensure_symlink(source / name, target / name)
-    return str(target)
-
-
 def resolve_thread_id(project: str) -> str:
     """Resolve the current Codex thread from env or the newest matching rollout."""
     thread_id = os.environ.get("CODEX_THREAD_ID", "")
@@ -154,59 +108,12 @@ def resolve_thread_id(project: str) -> str:
     return ""
 
 
-def desktop_thread_busy(thread_id: str) -> bool:
-    """Read the rollout journal to detect turns active in another app-server.
-
-    A detached Desktop bridge has its own app-server connection, so
-    ``thread/resume`` does not reliably expose a turn currently running in the
-    Desktop app-server. The rollout journal is shared by both and records
-    balanced ``task_started`` / ``task_complete`` events.
-    """
-    home = os.environ.get("HOME")
-    if not home or not thread_id:
-        return False
-    sessions = Path(home) / ".codex" / "sessions"
-    if not sessions.is_dir():
-        return False
-    try:
-        files = sorted(
-            sessions.rglob(f"rollout-*{thread_id}.jsonl"),
-            key=lambda path: path.stat().st_mtime,
-            reverse=True,
-        )
-    except OSError:
-        return False
-    active = 0
-    for path in reversed(files):
-        try:
-            stream = path.open(encoding="utf-8")
-        except OSError:
-            continue
-        with stream:
-            for line in stream:
-                try:
-                    item = json.loads(line)
-                except ValueError:
-                    continue
-                if item.get("type") != "event_msg":
-                    continue
-                payload = item.get("payload")
-                kind = payload.get("type") if isinstance(payload, dict) else None
-                if kind == "task_started":
-                    active += 1
-                elif kind == "task_complete":
-                    active = max(0, active - 1)
-    return active > 0
-
-
-def publish_session_request(project: str) -> bool:
-    """Publish the Codex SessionStart rendezvous consumed by the launcher."""
+def _publish_bridge_request(project: str, app_server: str = "") -> bool:
     pairs = identity.identities(project, "codex")
     if len(pairs) != 1:
         return False
     thread_id = resolve_thread_id(project)
-    app_server = os.environ.get("AGMSG_CODEX_BRIDGE_APP_SERVER", "")
-    if not thread_id or not app_server:
+    if not thread_id:
         return False
     team, name = pairs[0]
     payload = {
@@ -226,6 +133,14 @@ def publish_session_request(project: str) -> bool:
     return True
 
 
+def publish_session_request(project: str) -> bool:
+    """Publish the Codex SessionStart rendezvous consumed by the launcher."""
+    app_server = os.environ.get("AGMSG_CODEX_BRIDGE_APP_SERVER", "")
+    if not app_server:
+        return False
+    return _publish_bridge_request(project, app_server)
+
+
 def is_desktop_session() -> bool:
     """Return whether this hook is running inside a Codex Desktop thread."""
     if not os.environ.get("CODEX_THREAD_ID"):
@@ -233,73 +148,6 @@ def is_desktop_session() -> bool:
     if os.environ.get("CODEX_INTERNAL_ORIGINATOR_OVERRIDE") == "Codex Desktop":
         return True
     return os.environ.get("AGMSG_CODEX_BRIDGE") != "1"
-
-
-def start_desktop_bridge(project: str) -> bool:
-    """Start a detached bridge for the current Codex Desktop thread.
-
-    Desktop does not launch through the optional Codex shim, so there is no
-    shared app-server socket to rendezvous with. A fresh app-server can still
-    resume the current thread by ID. This is started from the Stop hook, when
-    the Desktop turn is idle, to avoid racing the turn that launched the hook.
-    """
-    if not is_desktop_session():
-        return False
-    pairs = identity.identities(project, "codex")
-    if len(pairs) != 1:
-        return False
-    team, name = pairs[0]
-    pid = _read_pid(bridge_path(team, name, "pid"))
-    if pid and _pid_alive(pid):
-        return True
-    thread_id = os.environ["CODEX_THREAD_ID"]
-    log_path = bridge_path(team, name, "log")
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    command_override = os.environ.get("AGMSG_CODEX_BRIDGE_CMD")
-    command = (
-        shlex.split(command_override)
-        if command_override
-        else [
-            plat.python_executable(),
-            str(plat.agmsg_py()),
-            "codex-bridge",
-        ]
-    )
-    command += [
-        "--project",
-        str(Path(project).resolve()),
-        "--type",
-        "codex",
-        "--team",
-        team,
-        "--name",
-        name,
-        "--thread",
-        thread_id,
-        "--inline-inbox",
-    ]
-    env = dict(os.environ)
-    env["AGMSG_CODEX_DESKTOP_BRIDGE"] = "1"
-    env["CODEX_HOME"] = prepare_desktop_codex_home()
-    try:
-        env["AGMSG_REAL_CODEX"] = _real_codex(
-            shim_target(), require_app_server=True
-        )
-    except AgmsgError as exc:
-        with log_path.open("ab") as stream:
-            stream.write(f"codex-bridge: {exc.message}\n".encode("utf-8"))
-        return False
-    with log_path.open("ab") as stream:
-        subprocess.Popen(
-            command,
-            cwd=project,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=stream,
-            stderr=stream,
-            start_new_session=True,
-        )
-    return True
 
 
 def watch_once(
@@ -881,18 +729,6 @@ class CodexBridge:
     def _try_start_turn(self) -> None:
         if not self.pending_wake or self.turn_active or not self.thread_idle:
             return
-        if (
-            os.environ.get("AGMSG_CODEX_DESKTOP_BRIDGE") == "1"
-            and self.thread_id
-            and desktop_thread_busy(self.thread_id)
-        ):
-            if self.retry_timer is None:
-                self.retry_timer = threading.Timer(
-                    1.0, lambda: self.client.events.put(("_retry", {}))
-                )
-                self.retry_timer.daemon = True
-                self.retry_timer.start()
-            return
         inbox = self._read_inbox() if self.inline_inbox else ""
         if self.inline_inbox and not inbox.strip():
             sys.stderr.write(
@@ -1118,7 +954,7 @@ def bridge_launcher(
     """Wait outside the Codex sandbox and launch bridge requests from the hook."""
     path = request_path(project)
     last = ""
-    while _pid_alive(parent_pid):
+    while parent_pid <= 0 or _pid_alive(parent_pid):
         try:
             raw = path.read_text(encoding="utf-8")
         except OSError:
@@ -1168,6 +1004,12 @@ def bridge_launcher(
                     ]
                     log_path.parent.mkdir(parents=True, exist_ok=True)
                     with log_path.open("ab") as log:
+                        log.write(
+                            (
+                                "codex-bridge: launcher using app-server "
+                                f"{endpoint} for thread {thread_id}\n"
+                            ).encode("utf-8")
+                        )
                         subprocess.Popen(
                             command,
                             cwd=project,
@@ -1525,6 +1367,22 @@ def stop_bridges(project: str) -> int:
                 pass
     try:
         request_path(project).unlink()
+    except OSError:
+        pass
+    for path in (socket_path(project).with_suffix(".pid"),):
+        pid = _read_pid(path)
+        if pid and _pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed += 1
+            except OSError:
+                pass
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    try:
+        socket_path(project).unlink()
     except OSError:
         pass
     return killed

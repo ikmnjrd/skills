@@ -47,9 +47,6 @@ preserved at:
 - Added Codex monitor health reporting, stale bridge cleanup, and a Stop-hook
   fallback so sessions that were not launched through the shim still receive
   messages between turns instead of failing silently.
-- Added Codex Desktop bridge startup from the first Stop hook. It uses the
-  Desktop-provided thread ID and a detached app-server, allowing real-time
-  delivery without requiring the CLI shim.
 - Fixed Codex monitor real-binary resolution to preserve external command shim
   paths such as Volta's `codex -> volta-shim` symlink, while still skipping
   agmsg's own shim. Directly executing the resolved Volta binary exits before
@@ -60,14 +57,10 @@ preserved at:
 - Relaxed Codex Desktop hook detection to use `CODEX_THREAD_ID` even if the
   internal originator environment variable changes, while avoiding nested
   agmsg bridge sessions.
-- Added a bridge startup lock file so repeated Desktop Stop hooks cannot race
-  between pidfile checks and spawn duplicate bridge processes.
-- Added a writable bridge-only `CODEX_HOME` under `.agmsg/run/codex-home` for
-  Codex Desktop app-server startup inside the hook sandbox, copying auth/config
-  and linking sessions/plugins from the user's real Codex home.
-- Extended install-time Codex sandbox setup to include `~/.codex/sessions` as a
-  writable root, which the detached Desktop app-server needs when resuming the
-  current thread recorder.
+- Disabled detached app-server delivery for Codex Desktop UI. Desktop hooks now
+  prefer the UI-visible Stop-hook fallback because turns created by an external
+  app-server are written to session storage but are not live-rendered in the
+  already-open Desktop thread.
 
 ## Update policy
 

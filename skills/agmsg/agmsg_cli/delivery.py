@@ -518,7 +518,9 @@ def do_status(agent_type: str, project: str) -> str:
         )
         lines.append(f"turn fallback: {'enabled' if fallback else 'disabled'}")
         if mode == "monitor":
-            if bridges["alive"]:
+            if codex.is_desktop_session():
+                health = "desktop fallback (UI-visible Stop hook delivery)"
+            elif bridges["alive"]:
                 health = "active"
             elif fallback:
                 health = "degraded (turn fallback; bridge is not running)"
@@ -565,12 +567,17 @@ def check_inbox(agent_type: str, project: str, hook_input: str = "") -> tuple[st
         from . import codex
 
         if codex.bridge_status(project)["alive"]:
+            if codex.is_desktop_session():
+                codex.stop_bridges(project)
+            else:
+                return ("defer", "")
+        # Codex Desktop cannot live-render turns created by a detached
+        # app-server. Keep monitor mode UI-visible by using the Stop-hook
+        # fallback instead of starting a hidden background bridge.
+        if codex.is_desktop_session():
+            pass
+        elif codex.bridge_status(project)["alive"]:
             return ("defer", "")
-        # Codex Desktop does not pass through the CLI shim. Its Stop hook runs
-        # after the turn becomes idle, which is the safe point to attach a
-        # detached app-server bridge to the current CODEX_THREAD_ID.
-        if status_mode(agent_type, project) == "monitor":
-            codex.start_desktop_bridge(project)
 
     sid = _extract_session_id(hook_input) or os.environ.get(
         "CLAUDE_CODE_SESSION_ID", ""
@@ -698,12 +705,7 @@ def session_end(agent_type: str, project: str, hook_input: str = "") -> str:
     if agent_type == "codex":
         from . import codex
 
-        # A Desktop bridge starts its own app-server, which also executes the
-        # project's SessionEnd hook when an injected turn finishes. Do not let
-        # that nested hook kill the bridge that owns it. The real Desktop
-        # process has no marker and still performs cleanup on session exit.
-        if os.environ.get("AGMSG_CODEX_DESKTOP_BRIDGE") != "1":
-            codex.stop_bridges(project)
+        codex.stop_bridges(project)
     sid = _extract_session_id(hook_input)
     if not sid:
         return ""
