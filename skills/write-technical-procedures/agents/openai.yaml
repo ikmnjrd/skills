@@ -1,0 +1,4 @@
+interface:
+  display_name: "技術手順書作成"
+  short_description: "日本語の技術手順書を前提、確認、切り戻しまで安全に書く"
+  default_prompt: "Use $write-technical-procedures to draft a Japanese technical procedure with prerequisites, steps, verification, and rollback notes."

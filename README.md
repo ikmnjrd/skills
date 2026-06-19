@@ -13,6 +13,8 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `japanese-tech-writing` — 日本語の技術文書・書籍原稿を書く、または推敲するときの文章規範を定めます。
 - `agmsg` — ローカル SQLite を使い、Codex と Claude Code のセッション間でメッセージを送受信します。
 - `request-claude-review` — `claude -p` を使い、Claude Code へ単発のレビューを依頼します。オリジナルスキルです。
+- `write-infra-console-expectations` — インフラ作成手順書に、Web コンソール上で確認する過不足ない期待値を書きます。オリジナルスキルです。
+- `write-technical-procedures` — 日本語の技術手順書を、前提、手順、確認、切り戻しまで含めて作成します。オリジナルスキルです。
 
 ## ディレクトリ構成
 
@@ -58,6 +60,12 @@ skills/
     VENDOR.md
   request-claude-review/
     SKILL.md
+  write-infra-console-expectations/
+    SKILL.md
+  write-technical-procedures/
+    SKILL.md
+    agents/
+      openai.yaml
 LICENSES/
   mattpocock-skills-LICENSE
   k16shikano-japanese-tech-writing-LICENSE-NOTICE
