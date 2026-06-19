@@ -6,3 +6,5 @@ skills/agmsg/runtime-path
 skills/agmsg/python-path
 __pycache__/
 *.pyc
+# agmsgの生成物
+.codex/hooks.json

@@ -16,10 +16,17 @@ Codex が対応する配信モードは `monitor`、`turn`、`off` です。`bot
 Codex起動だけをブリッジ経由に切り替えます。Codexやapp-serverの仕様変更で
 動作しなくなる可能性があります。
 
+monitorには`codex app-server --listen`を提供するCodex CLIが必要です。古い
+npm/Volta版の`codex`がPATH上にある場合は、native install版またはCodex Desktop
+同梱のCLIを使ってください。agmsgはmonitor/app-server経路ではapp-server対応CLIを
+優先して探しますが、古いCLIをアンインストールしてPATHを整理する構成を推奨します。
+
 bridgeが起動していないセッションでは、`Stop` hookがフォールバックとして
 各ターン終了時に受信箱を確認します。この場合はリアルタイム配信ではありません。
 Codex Desktopでは、最初の`Stop` hookが`CODEX_THREAD_ID`を使って専用bridgeを
-起動します。bridgeが起動するまでは同じhookがフォールバック配信を行います。
+起動します。bridgeは`.agmsg/run/codex-home`に書き込み可能な専用`CODEX_HOME`を
+作り、既存の認証・設定・sessionsを参照してapp-serverを起動します。bridgeが
+起動するまでは同じhookがフォールバック配信を行います。
 
 初めて参加した後、ユーザーに次の選択を求めます。
 

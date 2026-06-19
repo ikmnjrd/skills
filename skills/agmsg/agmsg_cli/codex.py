@@ -15,6 +15,7 @@ import os
 import queue
 import secrets
 import shlex
+import shutil
 import signal
 import socket
 import stat
@@ -66,6 +67,51 @@ def _read_pid(path: Path) -> int:
         return value if value > 0 else 0
     except (OSError, ValueError):
         return 0
+
+
+def _sync_file(src: Path, dst: Path) -> None:
+    if not src.is_file():
+        return
+    try:
+        if dst.is_file() and dst.stat().st_mtime >= src.stat().st_mtime:
+            return
+    except OSError:
+        pass
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, dst)
+
+
+def _ensure_symlink(src: Path, dst: Path) -> None:
+    if not src.exists():
+        return
+    try:
+        if dst.is_symlink() and Path(os.readlink(dst)) == src:
+            return
+    except OSError:
+        pass
+    if dst.exists() or dst.is_symlink():
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    os.symlink(src, dst)
+
+
+def prepare_desktop_codex_home() -> str:
+    """Create a writable Codex home for the detached Desktop app-server."""
+    source = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+    target = plat.run_dir() / "codex-home"
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ("auth.json", "config.toml", "models_cache.json", "version.json"):
+        _sync_file(source / name, target / name)
+    for name in (
+        "sessions",
+        "plugins",
+        "skills",
+        "vendor_imports",
+        "attachments",
+        "rules",
+    ):
+        _ensure_symlink(source / name, target / name)
+    return str(target)
 
 
 def resolve_thread_id(project: str) -> str:
@@ -182,10 +228,11 @@ def publish_session_request(project: str) -> bool:
 
 def is_desktop_session() -> bool:
     """Return whether this hook is running inside a Codex Desktop thread."""
-    return (
-        os.environ.get("CODEX_INTERNAL_ORIGINATOR_OVERRIDE") == "Codex Desktop"
-        and bool(os.environ.get("CODEX_THREAD_ID"))
-    )
+    if not os.environ.get("CODEX_THREAD_ID"):
+        return False
+    if os.environ.get("CODEX_INTERNAL_ORIGINATOR_OVERRIDE") == "Codex Desktop":
+        return True
+    return os.environ.get("AGMSG_CODEX_BRIDGE") != "1"
 
 
 def start_desktop_bridge(project: str) -> bool:
@@ -207,6 +254,7 @@ def start_desktop_bridge(project: str) -> bool:
         return True
     thread_id = os.environ["CODEX_THREAD_ID"]
     log_path = bridge_path(team, name, "log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     command_override = os.environ.get("AGMSG_CODEX_BRIDGE_CMD")
     command = (
         shlex.split(command_override)
@@ -232,11 +280,15 @@ def start_desktop_bridge(project: str) -> bool:
     ]
     env = dict(os.environ)
     env["AGMSG_CODEX_DESKTOP_BRIDGE"] = "1"
+    env["CODEX_HOME"] = prepare_desktop_codex_home()
     try:
-        env["AGMSG_REAL_CODEX"] = _real_codex(shim_target())
-    except AgmsgError:
-        pass
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+        env["AGMSG_REAL_CODEX"] = _real_codex(
+            shim_target(), require_app_server=True
+        )
+    except AgmsgError as exc:
+        with log_path.open("ab") as stream:
+            stream.write(f"codex-bridge: {exc.message}\n".encode("utf-8"))
+        return False
     with log_path.open("ab") as stream:
         subprocess.Popen(
             command,
@@ -574,7 +626,8 @@ def _app_server_client(
         shlex.split(override)
         if override
         else [
-            os.environ.get("AGMSG_REAL_CODEX", "codex"),
+            os.environ.get("AGMSG_REAL_CODEX")
+            or _real_codex(shim_target(), require_app_server=True),
             "app-server",
             "--listen",
             "stdio://",
@@ -624,6 +677,7 @@ class CodexBridge:
         self.retry_timer: threading.Timer | None = None
         self.pidfile = bridge_path(team, name, "pid")
         self.metafile = bridge_path(team, name, "meta")
+        self.lockfile = bridge_path(team, name, "lock")
 
     def run(self) -> int:
         self.pidfile.parent.mkdir(parents=True, exist_ok=True)
@@ -924,6 +978,35 @@ class CodexBridge:
         return False
 
     def _single_instance(self) -> None:
+        fd = -1
+        for _ in range(3):
+            try:
+                fd = os.open(
+                    str(self.lockfile),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                break
+            except FileExistsError:
+                existing_lock = _read_pid(self.lockfile)
+                if existing_lock and _pid_alive(existing_lock):
+                    raise AgmsgError(
+                        "bridge_starting",
+                        f"bridge already starting for {self.team}/{self.name} "
+                        f"(pid {existing_lock})",
+                    )
+                try:
+                    self.lockfile.unlink()
+                except OSError:
+                    pass
+        if fd < 0:
+            raise AgmsgError(
+                "bridge_starting",
+                f"bridge already starting for {self.team}/{self.name}",
+            )
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(f"{os.getpid()}\n")
+
         existing = _read_pid(self.pidfile)
         if existing and _pid_alive(existing):
             raise AgmsgError(
@@ -964,6 +1047,11 @@ class CodexBridge:
                     path.unlink()
                 except OSError:
                     pass
+        if _read_pid(self.lockfile) == os.getpid():
+            try:
+                self.lockfile.unlink()
+            except OSError:
+                pass
 
 
 def _parse_max_id(text: str) -> int:
@@ -1092,11 +1180,30 @@ def bridge_launcher(
     return 0
 
 
-def _real_codex(shim_target: Path | None = None) -> str:
+def _supports_app_server(executable: str) -> bool:
+    try:
+        result = subprocess.run(
+            [executable, "app-server", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            env={**os.environ, "AGMSG_CODEX_SHIM_DISABLE": "1"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    output = result.stdout + result.stderr
+    return "codex app-server" in output and "--listen" in output
+
+
+def _real_codex(
+    shim_target: Path | None = None, *, require_app_server: bool = False
+) -> str:
     override = os.environ.get("AGMSG_REAL_CODEX")
     if override:
         return override
     target = shim_target.resolve() if shim_target and shim_target.exists() else None
+    fallback = ""
     for directory in os.environ.get("PATH", "").split(os.pathsep):
         candidate = Path(directory or ".") / "codex"
         if not candidate.is_file() or not os.access(candidate, os.X_OK):
@@ -1106,7 +1213,24 @@ def _real_codex(shim_target: Path | None = None) -> str:
         except OSError:
             resolved = candidate.absolute()
         if target is None or resolved != target:
-            return str(resolved)
+            executable = str(candidate.absolute())
+            if not require_app_server:
+                return executable
+            if _supports_app_server(executable):
+                return executable
+            if not fallback:
+                fallback = executable
+    if require_app_server:
+        desktop = Path("/Applications/Codex.app/Contents/Resources/codex")
+        if desktop.is_file() and os.access(desktop, os.X_OK):
+            executable = str(desktop)
+            if _supports_app_server(executable):
+                return executable
+        if fallback:
+            raise AgmsgError(
+                "codex_app_server_not_found",
+                "no app-server capable Codex binary found on PATH",
+            )
     raise AgmsgError("codex_not_found", "real codex not found on PATH")
 
 
@@ -1241,21 +1365,24 @@ def shim_invocation(args: list[str]) -> tuple[str, list[str], dict[str, str]]:
     """Return ``(executable, argv, env)`` for a shim launch."""
     target_env = os.environ.get("AGMSG_CODEX_SHIM_TARGET")
     target = Path(target_env) if target_env else shim_target()
-    real = _real_codex(target)
     env = dict(os.environ)
     if (
         env.get("AGMSG_CODEX_SHIM_DISABLE") == "1"
         or env.get("AGMSG_CODEX_BRIDGE") == "1"
     ):
+        real = _real_codex(target)
         return real, [real, *args], env
     project = _project_from_args(args)
     from . import delivery
 
     if delivery.status_mode("codex", project) != "monitor":
+        real = _real_codex(target)
         return real, [real, *args], env
     command = _first_non_option(args)
     if command in _PASSTHROUGH:
+        real = _real_codex(target)
         return real, [real, *args], env
+    real = _real_codex(target, require_app_server=True)
     monitor_override = env.get("AGMSG_CODEX_MONITOR_CMD")
     if monitor_override:
         prefix = shlex.split(monitor_override)
@@ -1296,7 +1423,9 @@ def run_monitor(
             "bad_args", "--codex-command must be 'codex' or 'resume'", 2
         )
     target_env = os.environ.get("AGMSG_CODEX_SHIM_TARGET")
-    real = _real_codex(Path(target_env) if target_env else None)
+    real = _real_codex(
+        Path(target_env) if target_env else None, require_app_server=True
+    )
     sock = Path(socket_override).resolve() if socket_override else socket_path(project)
     sock.parent.mkdir(parents=True, exist_ok=True)
     endpoint = f"unix://{sock}"
@@ -1389,7 +1518,7 @@ def stop_bridges(project: str) -> int:
                 killed += 1
             except OSError:
                 pass
-        for suffix in ("pid", "meta", "log"):
+        for suffix in ("pid", "meta", "log", "lock"):
             try:
                 bridge_path(team, name, suffix).unlink()
             except OSError:
@@ -1408,7 +1537,11 @@ def bridge_status(project: str) -> dict[str, Any]:
         pidfile = bridge_path(team, name, "pid")
         pid = _read_pid(pidfile)
         is_alive = bool(pid and _pid_alive(pid))
-        has_state = pidfile.exists() or bridge_path(team, name, "meta").exists()
+        has_state = (
+            pidfile.exists()
+            or bridge_path(team, name, "meta").exists()
+            or bridge_path(team, name, "lock").exists()
+        )
         if is_alive:
             alive += 1
         elif has_state:
@@ -1426,7 +1559,7 @@ def cleanup_stale_bridges(project: str) -> int:
         pid = _read_pid(pidfile)
         if pid and _pid_alive(pid):
             continue
-        for suffix in ("pid", "meta"):
+        for suffix in ("pid", "meta", "lock"):
             path = bridge_path(team, name, suffix)
             try:
                 path.unlink()

@@ -848,6 +848,16 @@ class TestCodexMonitor(Base):
         self.assertEqual(
             popen.call_args.kwargs["env"]["AGMSG_CODEX_DESKTOP_BRIDGE"], "1"
         )
+        self.assertTrue(popen.call_args.kwargs["env"]["CODEX_HOME"].endswith("codex-home"))
+
+    def test_codex_desktop_detection_accepts_thread_id_without_originator(self):
+        previous = self._environment(CODEX_THREAD_ID="desktop-thread")
+        os.environ.pop("CODEX_INTERNAL_ORIGINATOR_OVERRIDE", None)
+        os.environ.pop("AGMSG_CODEX_BRIDGE", None)
+        try:
+            self.assertTrue(codex.is_desktop_session())
+        finally:
+            self._restore_environment(previous)
 
     def test_codex_desktop_stop_hook_starts_bridge(self):
         identity.join("team", "alice", "codex", self.project)
@@ -929,7 +939,14 @@ class TestCodexMonitor(Base):
         fake_bin = Path(self.tmp) / "bin"
         fake_bin.mkdir()
         real = fake_bin / "codex"
-        real.write_text("#!/bin/sh\nexit 0\n")
+        real.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "app-server" ] && [ "$2" = "--help" ]; then\n'
+            "  printf 'Usage: codex app-server\\n      --listen <URL>\\n'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 0\n"
+        )
         real.chmod(0o755)
         delivery.apply("monitor", "codex", self.project)
         previous = self._environment(
@@ -944,12 +961,12 @@ class TestCodexMonitor(Base):
             self.assertEqual(executable, plat.python_executable())
             self.assertIn("codex-monitor", argv)
             self.assertIn("--last", argv)
-            self.assertEqual(env["AGMSG_REAL_CODEX"], str(real.resolve()))
+            self.assertEqual(env["AGMSG_REAL_CODEX"], str(real.absolute()))
 
             executable, argv, _ = codex.shim_invocation(
                 ["--cd", self.project, "exec", "echo", "hi"]
             )
-            self.assertEqual(executable, str(real.resolve()))
+            self.assertEqual(executable, str(real.absolute()))
             self.assertIn("exec", argv)
             self.assertNotIn("codex-monitor", argv)
         finally:
@@ -986,6 +1003,74 @@ class TestCodexMonitor(Base):
             target, on_path = codex.install_shim()
             self.assertTrue(on_path)
             self.assertEqual(target, shim_dir / "codex")
+        finally:
+            self._restore_environment(previous)
+
+    def test_real_codex_preserves_external_shim_path(self):
+        home = Path(self.tmp) / "home"
+        agmsg_shim = home / ".agents" / "bin" / "codex"
+        agmsg_shim.parent.mkdir(parents=True)
+        agmsg_shim.write_text(f"#!/bin/sh\n# {codex.SHIM_MARKER}\n")
+        agmsg_shim.chmod(0o755)
+
+        external_dir = Path(self.tmp) / "external-bin"
+        external_dir.mkdir()
+        external_target = external_dir / "volta-shim"
+        external_target.write_text("#!/bin/sh\nexit 0\n")
+        external_target.chmod(0o755)
+        external_codex = external_dir / "codex"
+        external_codex.symlink_to(external_target)
+
+        previous = self._environment(
+            HOME=home,
+            PATH=f"{agmsg_shim.parent}{os.pathsep}{external_dir}",
+        )
+        try:
+            self.assertEqual(
+                codex._real_codex(agmsg_shim),
+                str(external_codex.absolute()),
+            )
+        finally:
+            self._restore_environment(previous)
+
+    def test_real_codex_can_require_app_server_support(self):
+        home = Path(self.tmp) / "home"
+        agmsg_shim = home / ".agents" / "bin" / "codex"
+        agmsg_shim.parent.mkdir(parents=True)
+        agmsg_shim.write_text(f"#!/bin/sh\n# {codex.SHIM_MARKER}\n")
+        agmsg_shim.chmod(0o755)
+
+        old_dir = Path(self.tmp) / "old-bin"
+        old_dir.mkdir()
+        old = old_dir / "codex"
+        old.write_text("#!/bin/sh\nprintf 'Codex CLI\\n'\nexit 0\n")
+        old.chmod(0o755)
+
+        app_dir = Path(self.tmp) / "app-bin"
+        app_dir.mkdir()
+        app = app_dir / "codex"
+        app.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "app-server" ] && [ "$2" = "--help" ]; then\n'
+            "  printf 'Usage: codex app-server\\n      --listen <URL>\\n'\n"
+            "  exit 0\n"
+            "fi\n"
+            "exit 1\n"
+        )
+        app.chmod(0o755)
+
+        previous = self._environment(
+            HOME=home,
+            PATH=(
+                f"{agmsg_shim.parent}{os.pathsep}{old_dir}"
+                f"{os.pathsep}{app_dir}"
+            ),
+        )
+        try:
+            self.assertEqual(
+                codex._real_codex(agmsg_shim, require_app_server=True),
+                str(app.absolute()),
+            )
         finally:
             self._restore_environment(previous)
 

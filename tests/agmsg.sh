@@ -6,6 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/test-agmsg.XXXXXX")"
+tmp_dir="$(cd "$tmp_dir" && pwd -P)"
 trap 'rm -rf -- "$tmp_dir"' EXIT
 
 fixture_repo="$tmp_dir/repo"
@@ -37,7 +38,8 @@ runtime_dir="$fixture_repo/.agmsg"
 [ ! -e "$installed_skill/teams" ]
 [ ! -e "$installed_skill/run" ]
 grep -Fq "$runtime_dir" "$home_dir/.codex/config.toml"
-grep -Fq "writable_roots = [\"$runtime_dir\"]" \
+grep -Fq "$home_dir/.codex/sessions" "$home_dir/.codex/config.toml"
+grep -Fq "writable_roots = [\"$runtime_dir\", \"$home_dir/.codex/sessions\"]" \
   "$home_dir/.codex/config.toml"
 
 # install is idempotent
@@ -48,6 +50,7 @@ HOME="$home_dir" agmsg install \
 after_config="$(sha256sum "$runtime_dir/config.json")"
 [ "$before_config" = "$after_config" ]
 [ "$(grep -Fc "$runtime_dir" "$home_dir/.codex/config.toml")" -eq 1 ]
+[ "$(grep -Fc "$home_dir/.codex/sessions" "$home_dir/.codex/config.toml")" -eq 1 ]
 
 # identity + messaging
 agmsg join alpha alice codex "$project_dir" >/dev/null

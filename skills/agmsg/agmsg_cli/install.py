@@ -57,22 +57,18 @@ def _looks_like_old_runtime(runtime: Path) -> bool:
     ).is_file()
 
 
-def configure_codex(runtime_dir: Path) -> None:
-    home = os.environ.get("HOME")
-    if not home:
-        return
-    config_dir = Path(home) / ".codex"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    toml = config_dir / "config.toml"
-    if not toml.exists():
-        toml.write_text("", encoding="utf-8")
+def _quote_toml_string(path: Path) -> str:
+    return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
+
+def _ensure_writable_roots(toml: Path, roots: list[Path]) -> None:
     text = toml.read_text(encoding="utf-8")
-    if str(runtime_dir) in text:
+    missing = [root for root in roots if str(root) not in text]
+    if not missing:
         return
 
     shutil.copyfile(toml, str(toml) + ".bak")
-    entry = '"' + str(runtime_dir).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    entries = [_quote_toml_string(root) for root in missing]
 
     lines = text.splitlines()
     wr_idx = next(
@@ -85,7 +81,11 @@ def configure_codex(runtime_dir: Path) -> None:
             (j for j in range(wr_idx, len(lines)) if "]" in lines[j]), wr_idx
         )
         has_value = any('"' in lines[j] for j in range(wr_idx, close_idx + 1))
-        repl = (", " + entry + "]") if has_value else (entry + "]")
+        repl = (
+            ", " + ", ".join(entries) + "]"
+            if has_value
+            else ", ".join(entries) + "]"
+        )
         lines[close_idx] = lines[close_idx].replace("]", repl, 1)
         toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
@@ -95,12 +95,29 @@ def configure_codex(runtime_dir: Path) -> None:
         None,
     )
     if hdr_idx is not None:
-        lines.insert(hdr_idx + 1, f"writable_roots = [{entry}]")
+        lines.insert(hdr_idx + 1, f"writable_roots = [{', '.join(entries)}]")
         toml.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
 
     with toml.open("a", encoding="utf-8") as fh:
-        fh.write(f"\n[sandbox_workspace_write]\nwritable_roots = [{entry}]\n")
+        fh.write(
+            "\n[sandbox_workspace_write]\n"
+            f"writable_roots = [{', '.join(entries)}]\n"
+        )
+
+
+def configure_codex(runtime_dir: Path) -> None:
+    home = os.environ.get("HOME")
+    if not home:
+        return
+    config_dir = Path(home) / ".codex"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "sessions").mkdir(parents=True, exist_ok=True)
+    toml = config_dir / "config.toml"
+    if not toml.exists():
+        toml.write_text("", encoding="utf-8")
+
+    _ensure_writable_roots(toml, [runtime_dir, config_dir / "sessions"])
 
 
 def run(args: list[str]) -> dict:
