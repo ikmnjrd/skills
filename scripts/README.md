@@ -79,15 +79,23 @@ scripts/sync-skills.sh --agent codex
 scripts/sync-skills.sh --agent codex --agent claude-code
 ```
 
+同時インストール数を指定:
+
+```sh
+scripts/sync-skills.sh --jobs 8
+SYNC_SKILLS_JOBS=2 scripts/sync-skills.sh
+```
+
 コマンドを実行した Git リポジトリの project scope を同期:
 
 ```sh
 /path/to/skills/scripts/sync-skills.sh --scope project
 ```
 
-全スキルを同じ default branch のコミットから再インストールし、すべて成功した
-後で正本に存在しないスキルを削除します。一件でもインストールに失敗した場合は
-削除を行わず、終了コード `1` を返します。
+全スキルを同じ default branch のコミットから並列で再インストールし、すべて
+成功した後で正本に存在しないスキルを削除します。一件でもインストールに失敗
+した場合は削除を行わず、終了コード `1` を返します。並列数のデフォルトは
+`4` です。
 
 `agmsg` の同期後は、各インストール先の `install.sh` を実行して、この
 リポジトリ直下の Git 管理対象外 `.agmsg/` を初期化し、各 skill コピーへ

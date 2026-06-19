@@ -10,9 +10,11 @@ scope="user"
 dry_run=false
 agents=("codex" "claude-code")
 agent_option_seen=false
+jobs="${SYNC_SKILLS_JOBS:-8}"
 activity_pid=""
 activity_active=false
 activity_tty=false
+install_pids=()
 tmp_dir=""
 
 usage() {
@@ -24,6 +26,7 @@ Synchronize installed skills with this repository's skills/ directory.
 Options:
   --agent AGENT   Target agent: codex or claude-code. May be repeated.
   --scope SCOPE   Installation scope: user or project. Default: user.
+  --jobs N        Number of concurrent installs. Default: 8.
   --dry-run       Show the changes without installing or removing skills.
   -h, --help      Show this help.
 EOF
@@ -82,6 +85,15 @@ stop_activity() {
 
 cleanup() {
   stop_activity failure
+  if [ "${#install_pids[@]}" -gt 0 ]; then
+    for pid in "${install_pids[@]}"; do
+      kill "$pid" 2>/dev/null || true
+    done
+    for pid in "${install_pids[@]}"; do
+      wait "$pid" 2>/dev/null || true
+    done
+    install_pids=()
+  fi
   if [ -n "$tmp_dir" ]; then
     rm -rf -- "$tmp_dir"
   fi
@@ -133,6 +145,15 @@ while [ "$#" -gt 0 ]; do
       scope="${1#*=}"
       shift
       ;;
+    --jobs)
+      [ "$#" -ge 2 ] || fail_usage "--jobs requires a value"
+      jobs="$2"
+      shift 2
+      ;;
+    --jobs=*)
+      jobs="${1#*=}"
+      shift
+      ;;
     --dry-run)
       dry_run=true
       shift
@@ -151,6 +172,15 @@ case "$scope" in
   user|project) ;;
   *) fail_usage "unsupported scope: $scope" ;;
 esac
+
+case "$jobs" in
+  ''|*[!0-9]*)
+    fail_usage "jobs must be a positive integer"
+    ;;
+esac
+if [ "$jobs" -le 0 ]; then
+  fail_usage "jobs must be a positive integer"
+fi
 
 command -v gh >/dev/null 2>&1 || {
   printf 'Result: failed\nFailed: gh command not found\n' >&2
@@ -294,16 +324,66 @@ if [ "${#source_sha}" -ne 40 ]; then
   exit 1
 fi
 
-installed=()
-failed=()
-for agent in "${agents[@]}"; do
-  for skill in "${skills[@]}"; do
+wait_for_install_slot() {
+  local first_pid i
+  local -a remaining
+
+  while [ "${#install_pids[@]}" -ge "$jobs" ]; do
+    first_pid="${install_pids[0]}"
+    wait "$first_pid" 2>/dev/null || true
+
+    remaining=()
+    i=1
+    while [ "$i" -lt "${#install_pids[@]}" ]; do
+      remaining+=("${install_pids[$i]}")
+      i=$((i + 1))
+    done
+    install_pids=("${remaining[@]}")
+  done
+}
+
+install_skill_async() {
+  local agent="$1"
+  local skill="$2"
+  local result_id status_file
+
+  result_id="${agent}--${skill}"
+  status_file="$tmp_dir/install-$result_id.status"
+
+  wait_for_install_slot
+  (
     if gh skill install "$SOURCE_REPO" "skills/$skill" \
       --agent "$agent" \
       --scope "$scope" \
       --pin "$source_sha" \
       --force \
-      >"$tmp_dir/install.out" 2>"$tmp_dir/install.err"; then
+      >"$tmp_dir/install-$result_id.out" \
+      2>"$tmp_dir/install-$result_id.err"; then
+      printf 'ok\n' >"$status_file"
+    else
+      printf 'failed\n' >"$status_file"
+    fi
+  ) &
+  install_pids+=("$!")
+}
+
+installed=()
+failed=()
+for agent in "${agents[@]}"; do
+  for skill in "${skills[@]}"; do
+    install_skill_async "$agent" "$skill"
+  done
+done
+
+for pid in "${install_pids[@]}"; do
+  wait "$pid" 2>/dev/null || true
+done
+install_pids=()
+
+for agent in "${agents[@]}"; do
+  for skill in "${skills[@]}"; do
+    result_id="${agent}--${skill}"
+    if [ "$(cat "$tmp_dir/install-$result_id.status" 2>/dev/null)" = "ok" ]; then
       installed+=("$agent/$skill")
     else
       failed+=("$agent/$skill")

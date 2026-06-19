@@ -35,6 +35,29 @@ if [ "$1" = "skill" ] && [ "$2" = "install" ]; then
     esac
   done
 
+  if [ -n "${SYNC_TEST_PARALLEL_DIR:-}" ]; then
+    mkdir -p "$SYNC_TEST_PARALLEL_DIR"
+    case "$agent" in
+      codex)
+        touch "$SYNC_TEST_PARALLEL_DIR/codex-started"
+        sleep 1
+        touch "$SYNC_TEST_PARALLEL_DIR/codex-finished"
+        ;;
+      claude-code)
+        waited=0
+        while [ "$waited" -lt 20 ]; do
+          if [ -f "$SYNC_TEST_PARALLEL_DIR/codex-started" ] && \
+            [ ! -f "$SYNC_TEST_PARALLEL_DIR/codex-finished" ]; then
+            touch "$SYNC_TEST_PARALLEL_DIR/observed"
+            break
+          fi
+          waited=$((waited + 1))
+          sleep 0.05
+        done
+        ;;
+    esac
+  fi
+
   [ "$scope" = "user" ]
   case "$agent" in
     codex) target="$HOME/.codex/skills" ;;
@@ -64,15 +87,20 @@ touch \
   "$success_home/.codex/skills/agmsg/scripts/legacy.sh" \
   "$success_home/.claude/skills/agmsg/install.sh" \
   "$success_home/.claude/skills/agmsg/scripts/legacy.sh"
+parallel_dir="$success_root/parallel"
 success_output="$(
   cd "$success_root"
   HOME="$success_home" \
   PATH="$success_root/bin:$PATH" \
   FAKE_SOURCE_ROOT="$success_root" \
+  SYNC_SKILLS_JOBS=4 \
+  SYNC_TEST_PARALLEL_DIR="$parallel_dir" \
   scripts/sync-skills.sh
 )"
 grep -q '^Result: synchronized$' <<<"$success_output"
-runtime_dir="$success_root/.agmsg"
+[ -f "$parallel_dir/observed" ]
+success_physical_root="$(cd "$success_root" && pwd -P)"
+runtime_dir="$success_physical_root/.agmsg"
 [ "$(cat "$success_home/.codex/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ "$(cat "$success_home/.claude/skills/agmsg/runtime-path")" = "$runtime_dir" ]
 [ -f "$runtime_dir/db/messages.db" ]
@@ -93,6 +121,16 @@ dry_run_output="$(
 )"
 grep -q '^Setup: codex/agmsg$' <<<"$dry_run_output"
 grep -q '^Setup: claude-code/agmsg$' <<<"$dry_run_output"
+
+serial_output="$(
+  cd "$success_root"
+  HOME="$success_home" \
+  PATH="$success_root/bin:$PATH" \
+  FAKE_SOURCE_ROOT="$success_root" \
+  scripts/sync-skills.sh --jobs 1 --agent codex
+)"
+grep -q '^Result: synchronized$' <<<"$serial_output"
+grep -q '^Installed: codex/agmsg$' <<<"$serial_output"
 
 failure_root="$tmp_dir/failure"
 make_fixture "$failure_root"
