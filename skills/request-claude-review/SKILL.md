@@ -1,12 +1,12 @@
 ---
 name: request-claude-review
-description: Claude Code CLI の `claude -p` をサンドボックス外で実行し、ユーザーの既存 Claude Code ログインを使って単発レビューを行います。Codex で作業中の差分、直近コミット、コミット範囲、計画、設計、実装方針、PR 相当の変更について、agmsg や常駐セッションを使わず Claude に一度だけレビューさせたい場合、または別モデルの観点でバグ、回帰、テスト不足、設計リスクを確認したい場合に使用します。
+description: Claude Code CLI の `claude -p` をサンドボックス外で実行し、ユーザーの既存 Claude Code ログインを使って単発レビューを行います。Codex で作業中の差分、直近コミット、コミット範囲、計画、設計、実装方針、PR 相当の変更について、常駐セッションを使わず Claude に一度だけレビューさせたい場合、または別モデルの観点でバグ、回帰、テスト不足、設計リスクを確認したい場合に使用します。
 ---
 
 # Claude への単発レビュー依頼
 
 Claude Code CLI の `claude -p` を使い、単発のレビュー結果を標準出力で受け取ります。
-agmsg、`spawn`、常駐 Claude セッション、ターミナル操作は使いません。
+`spawn`、常駐 Claude セッション、ターミナル操作は使いません。
 
 ## 方針
 
@@ -111,7 +111,7 @@ Glob
 - `loggedIn: false`、`Not logged in`、`Please run /login` など認証失敗: 通常の Claude Code 環境でログインが必要だとユーザーに報告して止めます。
 - 権限、ネットワーク、予算、その他 CLI エラー: 失敗理由を報告して止めます。
 
-失敗時に agmsg や `spawn` へフォールバックしません。
+失敗時に `spawn` へフォールバックしません。
 
 ### 4. 結果を扱う
 

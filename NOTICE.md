@@ -34,20 +34,6 @@ license declaration is recorded in:
 
 The upstream skill files are preserved without local content changes.
 
-The messaging scripts under `skills/agmsg` are vendored from:
-
-- Repository: https://github.com/ikmnjrd/agmsg
-- Author: fujibee
-- License: MIT
-
-The original copyright and MIT license text are preserved under:
-
-- `LICENSES/agmsg-LICENSE`
-
-This repository adapts agmsg into a conventional Agent Skill and stores
-mutable runtime state outside the vendored skill directory. Local changes are
-documented in `skills/agmsg/VENDOR.md`.
-
 The skill under `skills/japanese-tech-writing` is vendored from:
 
 - Source: https://gist.github.com/k16shikano/fd287c3133457c4fd8f5601d34aa817d

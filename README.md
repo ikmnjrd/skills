@@ -11,7 +11,6 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
 - `extract-glossary` — リポジトリ群から用語集、実装マップ、技術構成、オンボーディング向け Mermaid 図を生成します。
 - `japanese-tech-writing` — 日本語の技術文書・書籍原稿を書く、または推敲するときの文章規範を定めます。
-- `agmsg` — ローカル SQLite を使い、Codex と Claude Code のセッション間でメッセージを送受信します。
 - `request-claude-review` — `claude -p` を使い、Claude Code へ単発のレビューを依頼します。オリジナルスキルです。
 - `write-infra-console-expectations` — インフラ作成手順書に、Web コンソール上で確認する過不足ない期待値を書きます。オリジナルスキルです。
 - `write-technical-procedures` — 日本語の技術手順書を、前提、手順、確認、切り戻しまで含めて作成します。オリジナルスキルです。
@@ -49,14 +48,6 @@ skills/
     VENDOR.md
   japanese-tech-writing/
     SKILL.md
-    VENDOR.md
-  agmsg/
-    SKILL.md
-    SKILL.codex.md
-    SKILL.claude-code.md
-    agmsg.py
-    agmsg_cli/
-    tests/
     VENDOR.md
   request-claude-review/
     SKILL.md
@@ -107,10 +98,6 @@ MIT（個別ライセンスがない skill に対するアップストリーム 
 
 アップストリームには専用ライセンスファイルがないため、そのライセンス宣言を
 `LICENSES/mizchi-skills-LICENSE-NOTICE` に記録しています。
-
-`agmsg` は fujibee の `ikmnjrd/agmsg` リポジトリから取り込んだものです。
-MIT ライセンス本文は `LICENSES/agmsg-LICENSE` に保持し、このリポジトリ向けの
-状態保存先とセットアップ変更は `skills/agmsg/VENDOR.md` に記録しています。
 
 `japanese-tech-writing` は k16shikano の GitHub Gist から取り込んだものです。
 取り込み時点で明示的なライセンスファイルまたはライセンス宣言は見つからなかったため、

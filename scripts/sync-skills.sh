@@ -296,13 +296,6 @@ if [ "$dry_run" = true ]; then
   printf 'Result: dry-run\n'
   printf 'Scope: %s\n' "$scope"
   print_array_items "Install" planned
-  setup_planned=()
-  if contains_skill agmsg; then
-    for agent in "${agents[@]}"; do
-      setup_planned+=("$agent/agmsg")
-    done
-  fi
-  print_array_items "Setup" setup_planned
   print_array_items "Uninstall" removed
   exit 0
 fi
@@ -397,46 +390,6 @@ if [ "${#failed[@]}" -gt 0 ]; then
   printf 'Scope: %s\n' "$scope"
   print_array_items "Installed" installed
   print_array_items "Failed" failed
-  printf 'Uninstalled: none\n'
-  exit 1
-fi
-
-setup_failed=()
-if contains_skill agmsg; then
-  installer="$REPO_ROOT/skills/agmsg/agmsg.py"
-  for agent in "${agents[@]}"; do
-    target_dir="$(target_dir_for "$agent")"
-    installed_skill="$target_dir/agmsg"
-    # gh skill install --force may overlay files without removing paths that
-    # disappeared upstream. Remove the retired shell implementation before
-    # binding the installed Python skill to the shared runtime.
-    rm -rf -- "$installed_skill/install.sh" "$installed_skill/scripts"
-    if [ ! -f "$installer" ] || [ ! -f "$installed_skill/SKILL.md" ] || ! python3 "$installer" install \
-      --repo-root "$REPO_ROOT" \
-      --skill-dir "$installed_skill" \
-      >"$tmp_dir/agmsg-setup-$agent.out" \
-      2>"$tmp_dir/agmsg-setup-$agent.err"; then
-      setup_failed+=("$agent/agmsg")
-    fi
-  done
-fi
-
-if [ "${#setup_failed[@]}" -gt 0 ]; then
-  stop_activity failure
-  printf 'Result: failed\n'
-  printf 'Scope: %s\n' "$scope"
-  print_array_items "Installed" installed
-  print_array_items "Setup failed" setup_failed
-  for item in "${setup_failed[@]}"; do
-    agent="${item%%/*}"
-    error_file="$tmp_dir/agmsg-setup-$agent.err"
-    if [ -s "$error_file" ]; then
-      printf 'Setup error (%s):\n' "$item"
-      sed 's/^/  /' "$error_file"
-    else
-      printf 'Setup error (%s): source installer or installed skill missing\n' "$item"
-    fi
-  done
   printf 'Uninstalled: none\n'
   exit 1
 fi

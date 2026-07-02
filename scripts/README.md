@@ -97,11 +97,6 @@ SYNC_SKILLS_JOBS=2 scripts/sync-skills.sh
 した場合は削除を行わず、終了コード `1` を返します。並列数のデフォルトは
 `4` です。
 
-`agmsg` の同期後は、各インストール先の `install.sh` を実行して、この
-リポジトリ直下の Git 管理対象外 `.agmsg/` を初期化し、各 skill コピーへ
-`runtime-path` を記録します。このセットアップに失敗した場合も同期全体を失敗
-扱いにし、スキル削除は行いません。
-
 ## test-skill.sh
 
 実モデルを使い、Codex と Claude Code の非対話 CLI における明示的なスキル
