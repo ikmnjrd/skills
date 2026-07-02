@@ -13,6 +13,7 @@ agmsg、`spawn`、常駐 Claude セッション、ターミナル操作は使い
 - `claude -p` はサンドボックス外で実行します。Codex のサンドボックス内では、同じ `HOME` でも Claude Code の OAuth / Keychain 認証を読めず、未ログイン扱いになることがあります。
 - ログイン処理は行いません。ユーザーが通常の Claude Code でログイン済みの状態を使います。
 - `--bare` は使いません。`--bare` は OAuth / Keychain を読まないため、ユーザーのログイン状態を引き継げません。
+- モデルは Claude Sonnet 5 のモデルID `claude-sonnet-5` を明示指定します。
 - Claude に編集系ツールを許可しません。レビューに必要な読み取りと Git 調査だけを許可します。
 - Claude の結果はそのまま採用せず、Codex 側で対象コードや差分と照合します。
 
@@ -72,6 +73,7 @@ Codex では、ユーザーの既存ログインを使うためにサンドボ�
 
 ```bash
 claude -p \
+  --model claude-sonnet-5 \
   --allowedTools "Bash(git status*)" "Bash(git diff*)" "Bash(git log*)" "Read" "Grep" "Glob" \
   --max-turns 30 \
   --no-session-persistence \
@@ -84,6 +86,7 @@ claude -p \
 
 ```bash
 printf '%s\n' "<prompt>" | claude -p \
+  --model claude-sonnet-5 \
   --allowedTools "Bash(git status*)" "Bash(git diff*)" "Bash(git log*)" "Read" "Grep" "Glob" \
   --max-turns 30 \
   --no-session-persistence
