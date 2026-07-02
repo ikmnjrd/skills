@@ -187,6 +187,11 @@ command -v gh >/dev/null 2>&1 || {
   exit 1
 }
 
+if ! gh auth status >/dev/null 2>&1; then
+  printf 'Result: failed\nFailed: gh is not authenticated; run gh auth login or set GH_TOKEN\n' >&2
+  exit 1
+fi
+
 if [ "$scope" = "user" ] && [ -z "${HOME:-}" ]; then
   printf 'Result: failed\nFailed: HOME is not set\n' >&2
   exit 1

@@ -58,7 +58,8 @@ scripts/remove-skill.sh --dry-run grill-me
 ## sync-skills.sh
 
 リポジトリの `skills/` を正本として、Codex と Claude Code のインストール済み
-スキルを同期します。GitHub CLI の `gh` が必要です。
+スキルを同期します。GitHub CLI の `gh` と `gh auth login` 済みの認証、または
+`GH_TOKEN` が必要です。
 
 Codex と Claude Code の user scope を同期:
 
