@@ -14,6 +14,8 @@ description: nixos.local を使ったリモート開発の知識と手順。ロ�
 ファイルの編集と Git 操作はこのマシン上で行い、NixOS 側の同期先では行わない。
 テスト、ビルド、サーバー起動、`docker compose`、`nix develop` は NixOS 側の同期先で実行する。
 実行環境(Docker、Nix)は NixOS 側にあるため、これらをローカルで実行しない。
+ローカルには nix や direnv を導入しない(マシンリソース節約の方針)。
+実行環境の確認や再現もローカルで試みず、SSH 先で行う。
 
 `remote-dev` はユーザーコマンドとして登録済みであり、初期設定は完了している前提で進めてよい。
 コマンドが見つからない、または SSH 接続に失敗する場合だけ、[references/remote-dev.md](references/remote-dev.md) のセットアップとトラブルシュートを読む。
@@ -22,7 +24,8 @@ description: nixos.local を使ったリモート開発の知識と手順。ロ�
 
 1. ローカルの worktree でファイルを編集する。
 2. worktree 内で `remote-dev` を実行し、NixOS 側へ同期する。
-3. SSH 先の同期先ディレクトリでコマンドを実行する。
+3. 初回同期後とロックファイル変更後だけ、SSH 先で依存をインストールする(後述)。
+4. SSH 先の同期先ディレクトリでコマンドを実行する。
 
 `remote-dev` は成功時に同期先パスを表示する。
 
@@ -44,6 +47,27 @@ ssh nixos-remote-dev 'cd ~/workspace/remote-dev/<host>/<repo>/<branch> && <テ�
 
 編集のたびにこのループを回す。
 同期は rsync の差分転送なので、繰り返し実行してよい。
+
+## SSH 先の実行環境への入り方
+
+SSH 先の素の PATH には、node などプロジェクトのツールチェーンが無いことがある。
+プロジェクトが direnv(`.envrc` の `use flake`)で環境を作っている場合、非対話 SSH では direnv が発火しない。
+`.envrc` の `use flake` 行から flake 参照を取り、`nix develop <flake参照> --command` でコマンドをラップする。
+
+```sh
+# .envrc が `use flake path:./nix` のプロジェクトの場合
+ssh nixos-remote-dev 'cd <同期先> && nix develop path:./nix --command yarn workspace <pkg> test'
+```
+
+## 依存インストール
+
+`node_modules` は同期されないため、依存は SSH 先でインストールする。
+ただし毎回ではない。
+同期先に `node_modules` が既にあり、ロックファイルが変わっていなければ、そのまま使う。
+インストールするのは初回同期後とロックファイル変更後だけである。
+
+インストールには `--frozen-lockfile` を付ける(`yarn install --frozen-lockfile`。npm なら `npm ci`)。
+ロックファイルの正本はローカルにあり、SSH 先で書き換わると正本と食い違ったうえ、次回同期で失われる。
 
 ## 実行先の判断規則
 
