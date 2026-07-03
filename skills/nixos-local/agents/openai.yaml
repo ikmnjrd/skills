@@ -1,0 +1,4 @@
+interface:
+  display_name: "nixos.local開発"
+  short_description: "nixos.localでのリモート開発手順と知識を扱う"
+  default_prompt: "Use $nixos-local to sync the current worktree with remote-dev and run servers or tests on nixos.local."
