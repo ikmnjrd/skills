@@ -59,15 +59,34 @@ SSH 先の素の PATH には、node などプロジェクトのツールチェ�
 ssh nixos-remote-dev 'cd <同期先> && nix develop path:./nix --command yarn workspace <pkg> test'
 ```
 
+ローカルの flake.lock が flake.nix より古いと、SSH 先の `nix develop` は flake.lock を書き換えて補完する(ログに lock file 更新の警告が出る)。
+`--no-update-lock-file` は書き換えを防ぐがエラーで停止するため、回避策にならない。
+書き換えに気付いたら、更新された flake.lock をローカルへ回収する。
+ローカルで nix を使わないため、これが flake.lock の正規の更新経路である。
+回収はワーキングツリーへの反映までに留め、コミットするかどうかはユーザーに委ねる(回収した事実と理由を報告する)。
+回収しないと、同期のたびに古い lock へ巻き戻り、SSH 先での書き換えが毎回発生する。
+
+```sh
+# ローカルの worktree で実行する例
+scp nixos-remote-dev:'<同期先>/nix/flake.lock' nix/flake.lock
+```
+
 ## 依存インストール
 
 `node_modules` は同期されないため、依存は SSH 先でインストールする。
 ただし毎回ではない。
-同期先に `node_modules` が既にあり、ロックファイルが変わっていなければ、そのまま使う。
-インストールするのは初回同期後とロックファイル変更後だけである。
+要否は次のように判定する。
 
-インストールには `--frozen-lockfile` を付ける(`yarn install --frozen-lockfile`。npm なら `npm ci`)。
+- 同期先に `node_modules` が無い(初回同期後): インストールする。
+- 今回の変更でロックファイルに触れた: インストールする。
+- どちらでもない: そのまま使う。
+- 判定に迷う: インストールする。下記の方式なら冪等で、キャッシュが効けば十数秒で終わる。mtime 比較などの判定手段を自作しない。
+
+守る不変条件は「SSH 先でロックファイルを書き換えない」である。
+対象はリポジトリ管理下のロックファイル全般(yarn.lock、package-lock.json、flake.lock など)。
+flake.lock だけは `nix develop` 自身が書き換えることがあり、その扱いは「SSH 先の実行環境への入り方」に書いた。
 ロックファイルの正本はローカルにあり、SSH 先で書き換わると正本と食い違ったうえ、次回同期で失われる。
+このため `yarn install --frozen-lockfile` を使う(Yarn Berry では `--immutable` の別名として動作する。npm なら `npm ci`)。
 
 ## 実行先の判断規則
 
