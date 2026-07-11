@@ -6,6 +6,7 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 
 - `grill-me` — エージェントが焦点を絞った質問を一つずつ行い、計画や設計を厳しく検証します。
 - `grill-with-docs` — プロジェクト内の用語や意思決定と照らして計画を厳しく検証し、必要に応じて `CONTEXT.md` や ADR を更新します。
+- `handoff` — 現在の会話を、別のエージェントが作業を引き継げる文書へ要約します。
 - `audit-command-permissions` — Codex と Claude Code のログを監査し、許可、確認、拒否に関する保守的なコマンドルールを提案します。オリジナルスキルです。
 - `apply-command-permissions` — 選択した Codex と Claude Code の権限ルールについて、ドライラン、検証、適用、バックアップ、ロールバックを行います。オリジナルスキルです。
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
@@ -27,6 +28,9 @@ skills/
     SKILL.md
     CONTEXT-FORMAT.md
     ADR-FORMAT.md
+    VENDOR.md
+  handoff/
+    SKILL.md
     VENDOR.md
   audit-command-permissions/
     SKILL.md
@@ -209,6 +213,7 @@ scripts/test-skill.sh
 mkdir -p .github/skills
 cp -R skills/grill-me .github/skills/grill-me
 cp -R skills/grill-with-docs .github/skills/grill-with-docs
+cp -R skills/handoff .github/skills/handoff
 cp -R skills/empirical-prompt-tuning .github/skills/empirical-prompt-tuning
 cp -R skills/extract-glossary .github/skills/extract-glossary
 cp -R skills/japanese-tech-writing .github/skills/japanese-tech-writing

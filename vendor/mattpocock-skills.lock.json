@@ -23,5 +23,15 @@
       "CONTEXT-FORMAT.md",
       "ADR-FORMAT.md"
     ]
+  },
+  "handoff": {
+    "upstream": "https://github.com/mattpocock/skills",
+    "author": "Matt Pocock",
+    "originalPath": "skills/productivity/handoff",
+    "importedRef": "391a2701dd948f94f56a39f7533f8eea9a859c87",
+    "retrievedAt": "2026-07-11",
+    "license": "MIT",
+    "localPath": "skills/handoff",
+    "localChanges": "none"
   }
 }
