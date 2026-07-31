@@ -1,6 +1,6 @@
 ---
 name: nixos-local
-description: nixos.local を使ったリモート開発の知識と手順。ローカルの Git worktree を `remote-dev` で nixos.local へ同期し、SSH 先でサーバー起動・テスト・ビルドを実行するワークフローを扱う。Use when the task involves nixos.local, the nixos-remote-dev SSH host, the remote-dev command, syncing a worktree to NixOS, running servers or tests on the remote host, or troubleshooting SSH keys, mDNS resolution, or rsync sync paths for this workflow.
+description: nixos.local を使ったリモート開発の知識と手順。ローカルの Git worktree を `remote-dev` で nixos.local へ同期し、SSH 先でテストやビルドを実行し、既存のサーバーや SSH トンネルを再利用するワークフローを扱う。Use when the task involves nixos.local, the nixos-remote-dev SSH host, the remote-dev command, syncing a worktree to NixOS, reusing or starting remote servers and SSH tunnels, running tests or builds on the remote host, or troubleshooting SSH keys, mDNS resolution, or rsync sync paths for this workflow.
 ---
 
 # nixos.local 開発
@@ -20,12 +20,50 @@ description: nixos.local を使ったリモート開発の知識と手順。ロ�
 `remote-dev` はユーザーコマンドとして登録済みであり、初期設定は完了している前提で進めてよい。
 コマンドが見つからない、または SSH 接続に失敗する場合だけ、[references/remote-dev.md](references/remote-dev.md) のセットアップとトラブルシュートを読む。
 
+## 既存のサーバーと SSH トンネル
+
+サーバーや SSH トンネルは、別のタスクやユーザー操作ですでに起動している場合がある。
+長時間動くプロセスを新しく起動する前に、既存のプロセスが今回の同期先、ポート、転送先に合うか確認する。
+条件が合い、疎通確認に成功したプロセスはそのまま再利用する。
+
+確認する対象は次のとおり。
+
+1. リポジトリの設定と `remote-dev` の出力から、同期先、サーバーのポート、ローカルとリモートの転送先を特定する。
+2. ローカルの待受ポートと SSH トンネルを `lsof` と `ps` で確認する。
+3. NixOS 側の待受ポートとサーバープロセスを `ss` と `ps` で確認する。
+4. HTTP サーバーなら、既存のローカルポートへ `curl` またはブラウザーで接続し、今回必要な画面や応答が得られることを確認する。
+
+```sh
+# ローカルの待受ポートと SSH トンネルを確認する例
+lsof -nP -iTCP:<local-port> -sTCP:LISTEN
+ps -ax -o pid=,command= | rg 'ssh .*-[NLR]|<local-port>|<remote-port>'
+
+# NixOS 側の待受ポートを確認する例
+ssh nixos-remote-dev "ss -ltnp 'sport = :<remote-port>'"
+ssh nixos-remote-dev 'ps -fp <pid>'
+ssh nixos-remote-dev 'readlink /proc/<pid>/cwd'
+
+# 既存のトンネル経由で疎通を確認する例
+curl -fsS http://127.0.0.1:<local-port>/<health-or-page>
+```
+
+ポートが開いているだけでは再利用可能と判断しない。
+プロセスのコマンド、必要なら `/proc/<pid>/cwd`、実際の応答を確認し、対象の同期先で動くサーバーかを判定する。
+開発サーバーが同期後の変更を自動反映するなら、再起動せずに使い続ける。
+
+再利用できるプロセスが無い場合だけ、新しいサーバーまたは SSH トンネルを起動する。
+既存のローカルポートが別用途で使われている場合は上書きせず、別ポートを選ぶかユーザーへ確認する。
+タスク外で起動されたプロセスはユーザー管理として扱い、停止、再起動、置換をしない。
+終了が必要な場合も、現在のタスクで起動したプロセスだけを対象にする。
+`pkill` のように対象を広く取る停止方法は使わない。
+
 ## 基本ループ
 
 1. ローカルの worktree でファイルを編集する。
 2. worktree 内で `remote-dev` を実行し、NixOS 側へ同期する。
 3. 初回同期後とロックファイル変更後だけ、SSH 先で依存をインストールする(後述)。
-4. SSH 先の同期先ディレクトリでコマンドを実行する。
+4. SSH 先の同期先ディレクトリでテストやビルドのコマンドを実行する。
+5. サーバーやブラウザーを使う確認では、既存のサーバーと SSH トンネルを再利用し、存在しないものだけを起動する。
 
 `remote-dev` は成功時に同期先パスを表示する。
 
@@ -92,7 +130,8 @@ flake.lock だけは `nix develop` 自身が書き換えることがあり、そ
 
 - ファイル編集、`git add` や `git commit` などの Git 操作：ローカル。
 - テスト、ビルド、サーバー起動、`docker compose`、`nix develop`：SSH 先の同期先。
-- サーバーなど長時間動くプロセスは、`docker compose up -d` のようにデタッチで起動する。
+- サーバーや SSH トンネル：既存プロセスを優先して再利用し、必要な場合だけ新しく起動する。
+- 新しく起動するサーバーなどの長時間プロセス：`docker compose up -d` のようにデタッチで起動する。
 - NixOS 側だけに置きたい一時ファイルは、同期先の `.remote-dev-local/` に置く。
 
 ## 同期の性質
