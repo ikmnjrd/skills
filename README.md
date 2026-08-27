@@ -12,7 +12,7 @@ GitHub Copilot / コーディングエージェント向けに個人で厳選し
 - `empirical-prompt-tuning` — 独立した実行者と両面評価を使い、エージェント向け指示を反復的に改善します。
 - `extract-glossary` — リポジトリ群から用語集、実装マップ、技術構成、オンボーディング向け Mermaid 図を生成します。
 - `japanese-tech-writing` — 日本語の技術文書・書籍原稿を書く、または推敲するときの文章規範を定めます。
-- `nixos-local` — `nixos.local` を使ったリモート開発の手順と知識を扱います。オリジナルスキルです。
+- `nixos-local` — NixOSリモート開発環境へ同期して実行する手順と知識を扱います。オリジナルスキルです。
 - `request-claude-review` — `claude -p` を使い、Claude Code へ単発のレビューを依頼します。オリジナルスキルです。
 - `write-infra-console-expectations` — インフラ作成手順書に、Web コンソール上で確認する過不足ない期待値を書きます。オリジナルスキルです。
 - `write-technical-procedures` — 日本語の技術手順書を、前提、手順、確認、切り戻しまで含めて作成します。オリジナルスキルです。

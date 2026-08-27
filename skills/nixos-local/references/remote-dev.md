@@ -7,29 +7,16 @@
 ## 関連ファイル(~/workspace/dotfiles 内)
 
 - `bin/remote-dev`：同期コマンド本体。
-- `ssh/config.d/nixos-remote-dev`：`nixos.local` への SSH エイリアス。
+- `ssh/config.d/nixos-remote-dev`：NixOSリモート開発環境へのSSH接続設定。
 - `deploy.sh`：`remote-dev` と SSH 設定をホームディレクトリへリンクする。
 - `tests/remote-dev-config.sh`：同期先パス、除外設定、廃止済みサブコマンドを検証する。
 - `README.md`：利用者向けの概要手順。
 
 ## SSH 設定
 
-既定の SSH ホストは `nixos-remote-dev` である。
-
-設定値は次のとおり。
-
-```sshconfig
-Host nixos-remote-dev
-  HostName nixos.local
-  User ikd
-  IdentityFile ~/.ssh/id_ed25519_nixos_remote_dev
-  IdentitiesOnly yes
-  ServerAliveInterval 30
-  ServerAliveCountMax 3
-  ControlMaster auto
-  ControlPersist 10m
-  ControlPath ~/.ssh/control-%C
-```
+既定のSSHエイリアスは `nixos-remote-dev` である。
+実ホスト名、IPアドレス、ユーザー、認証鍵は `ssh/config.d/nixos-remote-dev` を正本とし、スキル内で固定しない。
+接続設定を確認するときは `ssh -G nixos-remote-dev` を使う。
 
 別の SSH ホストを試す場合は、`REMOTE_DEV_SSH_TARGET` を指定する。
 
@@ -134,19 +121,9 @@ ok: ssh nixos-remote-dev
 
 1. `~/.ssh/id_ed25519_nixos_remote_dev` が存在するか。
 2. 公開鍵が NixOS 側に登録されているか(`nixos-config` を確認する)。
-3. `nixos.local` の名前解決ができるか(次項の mDNS 解決を確認する)。
-4. `~/.ssh/config.d/nixos-remote-dev` のリンクが張られているか。
-
-### mDNS 解決
-
-Arch Linux では、`nixos.local` の解決に Avahi が必要になる。
-
-```sh
-sudo systemctl enable --now avahi-daemon
-getent hosts nixos.local
-```
-
-解決できない場合は、`/etc/nsswitch.conf` の `hosts:` に `mdns_minimal [NOTFOUND=return]` が含まれているか確認する。
+3. `~/.ssh/config.d/nixos-remote-dev` のリンクが張られているか。
+4. `ssh -G nixos-remote-dev` が意図した接続設定を返すか。
+5. SSH設定が示す実接続先へ到達できるか。
 
 ## 実装変更時のテスト
 

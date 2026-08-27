@@ -1,11 +1,12 @@
 ---
 name: nixos-local
-description: nixos.local を使ったリモート開発の知識と手順。ローカルの Git worktree を `remote-dev` で nixos.local へ同期し、SSH 先でテストやビルドを実行し、既存のサーバーや SSH トンネルを再利用するワークフローを扱う。Use when the task involves nixos.local, the nixos-remote-dev SSH host, the remote-dev command, syncing a worktree to NixOS, reusing or starting remote servers and SSH tunnels, running tests or builds on the remote host, or troubleshooting SSH keys, mDNS resolution, or rsync sync paths for this workflow.
+description: ローカルの Git worktree を `remote-dev` でNixOSリモート開発環境へ同期し、SSHエイリアス `nixos-remote-dev` 経由でテスト、ビルド、サーバーを実行するワークフローを扱う。Use when the task involves the nixos-remote-dev SSH alias, the remote-dev command, syncing a worktree to NixOS, reusing or starting remote servers and SSH tunnels, running tests or builds on the remote host, or troubleshooting SSH keys and rsync sync paths for this workflow.
 ---
 
-# nixos.local 開発
+# NixOSリモート開発
 
-このスキルは、ローカルの Git worktree を `nixos.local` 上の実行コピーへ同期して開発するワークフローを扱う。
+このスキルは、ローカルの Git worktree をNixOSリモート開発環境上の実行コピーへ同期して開発するワークフローを扱う。
+接続にはSSHエイリアス `nixos-remote-dev` を使い、実ホスト名やIPアドレスをスキル内で固定しない。
 
 役割分担は一点に尽きる。
 **編集はローカル、実行は NixOS 側。**
@@ -154,5 +155,5 @@ flake.lock だけは `nix develop` 自身が書き換えることがあり、そ
 これらを変更したら、dotfiles リポジトリで `tests/remote-dev-config.sh` を実行する。
 挙動が変わる変更では、このスキルと references の記述も合わせて更新する。
 
-実機接続、mDNS 解決、NixOS 側の公開鍵登録は環境依存である。
+実機接続、SSHの接続先、NixOS側の公開鍵登録は環境依存である。
 確認していない場合は、確認済みとして書かない。
