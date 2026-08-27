@@ -1,6 +1,6 @@
 ---
 name: nixos-local
-description: ローカルの Git worktree を `remote-dev` でNixOSリモート開発環境へ同期し、SSHエイリアス `nixos-remote-dev` 経由でテスト、ビルド、サーバーを実行するワークフローを扱う。Use when the task involves the nixos-remote-dev SSH alias, the remote-dev command, syncing a worktree to NixOS, reusing or starting remote servers and SSH tunnels, running tests or builds on the remote host, or troubleshooting SSH keys and rsync sync paths for this workflow.
+description: ローカルの Git worktree を `remote-dev` でNixOSリモート開発環境へ同期し、SSHエイリアス `nixos-remote-dev` 経由でテスト、ビルド、サーバーを実行するワークフローを扱う。Use when the task involves the nixos-remote-dev SSH alias, the remote-dev command, syncing a worktree to NixOS, reusing remote servers or SSH tunnels, asking the user to start required port forwards, running tests or builds on the remote host, or troubleshooting SSH keys and rsync sync paths for this workflow.
 ---
 
 # NixOSリモート開発
@@ -24,7 +24,7 @@ description: ローカルの Git worktree を `remote-dev` でNixOSリモート�
 ## 既存のサーバーと SSH トンネル
 
 サーバーや SSH トンネルは、別のタスクやユーザー操作ですでに起動している場合がある。
-長時間動くプロセスを新しく起動する前に、既存のプロセスが今回の同期先、ポート、転送先に合うか確認する。
+サーバーを新しく起動する前、または SSH トンネルの起動をユーザーへ依頼する前に、既存のプロセスが今回の同期先、ポート、転送先に合うか確認する。
 条件が合い、疎通確認に成功したプロセスはそのまま再利用する。
 
 確認する対象は次のとおり。
@@ -52,11 +52,74 @@ curl -fsS http://127.0.0.1:<local-port>/<health-or-page>
 プロセスのコマンド、必要なら `/proc/<pid>/cwd`、実際の応答を確認し、対象の同期先で動くサーバーかを判定する。
 開発サーバーが同期後の変更を自動反映するなら、再起動せずに使い続ける。
 
-再利用できるプロセスが無い場合だけ、新しいサーバーまたは SSH トンネルを起動する。
+再利用できるプロセスが無い場合だけ、新しいサーバーを起動するか、SSH トンネルの起動をユーザーへ依頼する。
+SSH トンネルはユーザーがローカル端末で管理する長時間プロセスとし、エージェントは起動または停止しない。
 既存のローカルポートが別用途で使われている場合は上書きせず、別ポートを選ぶかユーザーへ確認する。
 タスク外で起動されたプロセスはユーザー管理として扱い、停止、再起動、置換をしない。
-終了が必要な場合も、現在のタスクで起動したプロセスだけを対象にする。
+サーバーの終了が必要な場合も、現在のタスクで起動したプロセスだけを対象にする。
 `pkill` のように対象を広く取る停止方法は使わない。
+
+## ローカルから NixOS 側の HTTP サーバーへ接続する
+
+NixOS 側のサーバーが `0.0.0.0` で待ち受けていても、ローカルから NixOS のホスト名とポートへ直接接続できるとは限らない。
+NixOS のファイアウォールやネットワーク経路を変更せず、SSH のローカルポート転送を既定の接続方法とする。
+LAN 上の別端末から接続する要件がリポジトリに明記されている場合だけ、直接接続に必要な公開範囲を別途確認する。
+
+転送するポートは、ローカルで動かすクライアントが実際に接続する入口だけに絞る。
+
+- NixOS 側のフロントエンドが `/api` を同一オリジンで API へプロキシする場合：フロントエンドのポートだけを転送する。
+- ローカルの開発サーバーが NixOS 側の API をプロキシする場合：API のポートだけを転送し、ローカルのプロキシ先を `http://127.0.0.1:<local-api-port>` にする。
+- ローカルの `curl` や API クライアントから API を直接確認する場合：API のポートを転送する。
+
+ローカルと NixOS 側で同じポートを使う必要はない。
+ローカルポートが使用中なら、空いている別のローカルポートへ割り当てる。
+
+新しい転送が必要な場合、エージェントは次の順でユーザーへ実行を依頼する。
+
+1. リポジトリの設定、NixOS 側の待受状態、ローカルのポート使用状況から、ローカルポートとリモートポートを確定する。
+2. 次の形式からプレースホルダーを取り除き、実行可能なコマンドを提示する。
+3. 別のローカル端末でコマンドを実行し、その端末を開いたままにするよう伝える。
+4. 成功時は出力せずに待機することを伝え、実行できたら知らせるよう依頼する。
+5. ユーザーから実行済みの連絡を受けてから、待受と HTTP 応答を確認する。
+
+ユーザーへ提示するコマンドに `<local-port>` や `<remote-port>` を残さない。
+複数のポートが必要な場合も、必要性を確認したポートだけを `-L` で指定する。
+
+```sh
+ssh -N \
+  -o ControlMaster=no \
+  -o ControlPath=none \
+  -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:<local-port>:127.0.0.1:<remote-port> \
+  nixos-remote-dev
+```
+
+このコマンドは成功している間、出力せずにフォアグラウンドで待機する。
+`ControlPath=none` により SSH 接続の共有を使わず、コマンドを終了したときに転送も終了させる。
+`ExitOnForwardFailure=yes` により、ポート競合や転送要求の失敗を成功した接続として残さない。
+ローカル側の待受アドレスを `127.0.0.1` に限定し、LAN へ転送ポートを公開しない。
+
+ユーザーから実行済みの連絡を受けたら、エージェントが待受と HTTP 応答を確認する。
+
+```sh
+lsof -nP -iTCP:<local-port> -sTCP:LISTEN
+curl -fsS http://127.0.0.1:<local-port>/<health-or-page>
+```
+
+今回の依頼で起動した SSH トンネルが作業後に不要になる場合は、トンネルを実行している端末で `Ctrl-C` を入力するようユーザーへ依頼する。
+ユーザーから停止済みの連絡を受けたら、`lsof` から待受が消えたことを確認する。
+今回の依頼で接続共有を使って起動した転送が残った場合は、作成時と同じ `-L` 引数を指定した解除コマンドをユーザーへ提示する。
+
+```sh
+ssh -O cancel \
+  -L 127.0.0.1:<local-port>:127.0.0.1:<remote-port> \
+  nixos-remote-dev
+```
+
+`ssh -O exit` は共有 SSH 接続全体を終了するため、個別の転送を止める目的では使わない。
+`Address already in use` が出た場合は、既存の待受プロセスを確認し、別のローカルポートを選ぶ。
+HTTP の疎通に失敗した場合は、NixOS 側の `127.0.0.1:<remote-port>`、SSH トンネル、ローカルの `127.0.0.1:<local-port>` の順に確認する。
+ブラウザーから API だけに失敗する場合は、フロントエンドの API URL と開発サーバーのプロキシ設定も確認する。
 
 ## 基本ループ
 
@@ -64,7 +127,7 @@ curl -fsS http://127.0.0.1:<local-port>/<health-or-page>
 2. worktree 内で `remote-dev` を実行し、NixOS 側へ同期する。
 3. 初回同期後とロックファイル変更後だけ、SSH 先で依存をインストールする(後述)。
 4. SSH 先の同期先ディレクトリでテストやビルドのコマンドを実行する。
-5. サーバーやブラウザーを使う確認では、既存のサーバーと SSH トンネルを再利用し、存在しないものだけを起動する。
+5. サーバーやブラウザーを使う確認では、既存のサーバーと SSH トンネルを再利用し、必要な SSH トンネルが無ければユーザーへ起動を依頼する。
 
 `remote-dev` は成功時に同期先パスを表示する。
 
@@ -131,7 +194,8 @@ flake.lock だけは `nix develop` 自身が書き換えることがあり、そ
 
 - ファイル編集、`git add` や `git commit` などの Git 操作：ローカル。
 - テスト、ビルド、サーバー起動、`docker compose`、`nix develop`：SSH 先の同期先。
-- サーバーや SSH トンネル：既存プロセスを優先して再利用し、必要な場合だけ新しく起動する。
+- サーバーや SSH トンネル：既存プロセスを優先して再利用する。
+- 新しい SSH トンネル：実値入りコマンドを提示し、ユーザーへ起動と停止を依頼する。
 - 新しく起動するサーバーなどの長時間プロセス：`docker compose up -d` のようにデタッチで起動する。
 - NixOS 側だけに置きたい一時ファイルは、同期先の `.remote-dev-local/` に置く。
 
