@@ -21,6 +21,10 @@ description: ローカルの Git worktree を `remote-dev` でNixOSリモート�
 `remote-dev` はユーザーコマンドとして登録済みであり、初期設定は完了している前提で進めてよい。
 コマンドが見つからない、または SSH 接続に失敗する場合だけ、[references/remote-dev.md](references/remote-dev.md) のセットアップとトラブルシュートを読む。
 
+## スキル利用条件
+
+このスキルを利用すべきリポジトリでは、`AGENTS.md`もしくは`AGENTS.override.md`に「`nixos-local`スキルを使用する」旨の記述がある。記述がない場合はこのスキルの利用は禁止されている。
+
 ## 既存のサーバーと SSH トンネル
 
 サーバーや SSH トンネルは、別のタスクやユーザー操作ですでに起動している場合がある。
