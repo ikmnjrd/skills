@@ -76,6 +76,29 @@ coverage
 `.env` や `.env.local` は除外しない。
 ローカルだけにある Git 管理外ファイルも同期される。
 
+## プロジェクト固有の除外設定
+
+worktree のルートに `.remote-dev-ignore` を置くと、既定の除外にパターンを追加できる。
+サブディレクトリから実行しても、worktree ルートのファイルを読む。
+rsync の `--exclude-from` に渡すため、1行に1パターンを書き、空行と `#` で始まるコメントを使える。
+`.gitignore` は自動で読み込まず、否定パターン（`!`）や既定の除外の解除には対応しない。
+
+MinIO の実行データを除外する例を示す。
+
+```text
+# MinIO runtime data
+/minio/data/
+```
+
+先頭の `/` は worktree ルートを基準とし、末尾の `/` はディレクトリを指定する。
+除外したパスは転送されず、同期先にある同じパスも `--delete` で削除されない。
+コンテナの保存データを除外すれば、コンテナが作ったファイルに対する削除や更新日時の変更を rsync が試みなくなる。
+
+設定後は対象 worktree で `remote-dev` を実行する。
+終了コードが `0` で、`Synced to ...` が表示された場合に同期成功と判断する。
+失敗時は終了コードが非ゼロになり、成功メッセージを表示しない。
+転送途中まで反映された変更は残るため、エラーの原因を解消してから再実行する。
+
 ## 初期設定(未設定の環境の場合)
 
 初回だけ、ホスト別の SSH 鍵を作成する。
@@ -137,11 +160,14 @@ ok: ssh nixos-remote-dev
 tests/remote-dev-config.sh
 ```
 
-このテストは、SSH と rsync をスタブ化して次を検証する。
+このテストには `git`、`rsync`、`python3` が必要である。
+SSH と rsync のスタブに加え、一時ディレクトリで実際の rsync を使って次を検証する。
 
 - `remote-dev doctor` が `ssh -o BatchMode=yes nixos-remote-dev true` を実行する。
 - 同期先が `workspace/remote-dev/<host>/<repo>/<branch>` になる。
 - `rsync --delete` が使われる。
 - `node_modules` と `.remote-dev-local` が除外される。
+- `.remote-dev-ignore` のパターンで転送を除外し、リモートデータを削除から保護する。
+- rsync の失敗時は、通常出力でもスピナー表示でも終了コードを保持し、成功を表示しない。
 - `.env` は除外されない。
 - 廃止済みの `remote-dev up` は成功しない。

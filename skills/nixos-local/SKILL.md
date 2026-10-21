@@ -205,6 +205,9 @@ flake.lock だけは `nix develop` 自身が書き換えることがあり、そ
 
 ## 同期の性質
 
+プロジェクト固有の実行データは worktree ルートの `.remote-dev-ignore` で除外する。
+設定方法と削除からの保護は [references/remote-dev.md](references/remote-dev.md) を参照する。
+
 - 同期は `rsync --delete` で行う。NixOS 側だけにある通常ファイルは削除される(`.remote-dev-local/` は除外されるため残る)。
 - NixOS 側での編集は次回同期で失われる。編集してしまった場合は、同期前にローカルへ回収する。
 - `.env` や `.env.local` のような Git 管理外ファイルも同期される。同期してはいけない秘密情報がないか、初回同期の前に確認する。
