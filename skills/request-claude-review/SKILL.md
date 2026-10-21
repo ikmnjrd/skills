@@ -75,7 +75,7 @@ Codex では、ユーザーの既存ログインを使うためにサンドボ�
 claude -p \
   --model claude-opus-5 \
   --allowedTools "Bash(git status*)" "Bash(git diff*)" "Bash(git log*)" "Read" "Grep" "Glob" \
-  --max-turns 60 \
+  --max-turns 10000 \
   --no-session-persistence \
   "<prompt>"
 ```
@@ -88,7 +88,7 @@ claude -p \
 printf '%s\n' "<prompt>" | claude -p \
   --model claude-opus-5 \
   --allowedTools "Bash(git status*)" "Bash(git diff*)" "Bash(git log*)" "Read" "Grep" "Glob" \
-  --max-turns 30 \
+  --max-turns 10000 \
   --no-session-persistence
 ```
 
